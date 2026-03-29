@@ -24,6 +24,11 @@ services:
     environment:
       DATABASE_URI: postgresql://pokedex:pokedex@db:5432/pokedex
       PORT: "158"
+      TLS_CERT: /app/certs/fullchain.pem
+      TLS_KEY: /app/certs/privkey.pem
+    volumes:
+      - ./fullchain.pem:/app/certs/fullchain.pem:ro
+      - ./privkey.pem:/app/certs/privkey.pem:ro
     depends_on:
       db:
         condition: service_healthy

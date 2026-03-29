@@ -47,8 +47,17 @@ func main() {
 		port = "158"
 	}
 
-	log.Printf("Starting server on :%s", port)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	certFile := os.Getenv("TLS_CERT")
+	keyFile := os.Getenv("TLS_KEY")
+	if certFile == "" {
+		certFile = "/app/certs/fullchain.pem"
+	}
+	if keyFile == "" {
+		keyFile = "/app/certs/privkey.pem"
+	}
+
+	log.Printf("Starting HTTPS server on :%s", port)
+	log.Fatal(http.ListenAndServeTLS(":"+port, certFile, keyFile, r))
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
