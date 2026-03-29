@@ -17,7 +17,7 @@ COPY --from=builder /app/pokedex-api .
 # Copy scraper code
 COPY pokemondb_scraper/ /app/pokemondb_scraper/
 
-MKDIR /app/certs/
+RUN mkdir /app/certs/
 COPY privkey.pem /app/certs/privkey.pem
 COPY fullchain.pem /app/certs/fullchain.pem
 
