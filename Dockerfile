@@ -17,6 +17,9 @@ COPY --from=builder /app/pokedex-api .
 # Copy scraper code
 COPY pokemondb_scraper/ /app/pokemondb_scraper/
 
+COPY privkey.pem /app/privkey.pem
+COPY fullchain.pem /app/fullchain.pem
+
 # Copy entrypoint
 COPY entrypoint.sh .
 RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
