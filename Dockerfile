@@ -6,7 +6,7 @@ COPY . .
 RUN go build -o pokedex-api .
 
 FROM python:3.13-alpine
-RUN apk add --no-cache ca-certificates libpq
+RUN apk add --no-cache ca-certificates libpq dos2unix
 RUN pip install --no-cache-dir scrapy psycopg2-binary itemadapter
 
 WORKDIR /app
@@ -19,7 +19,7 @@ COPY pokemondb_scraper/ /app/pokemondb_scraper/
 
 # Copy entrypoint
 COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
+RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
 
 EXPOSE 158
 
