@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/pokedex-api/v2/models"
+	"github.com/pokedex-api/models"
 )
 
 func GetPokemonByName(ctx context.Context, name string) (*models.Pokemon, error) {

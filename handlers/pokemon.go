@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/pokedex-api/v2/db"
-	"github.com/pokedex-api/v2/models"
+	"github.com/pokedex-api/db"
+	"github.com/pokedex-api/models"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -201,9 +201,9 @@ func GetPokemonSpecies(w http.ResponseWriter, r *http.Request) {
 		"growth_rate": map[string]any{
 			"name": strings.ToLower(strings.ReplaceAll(deref(p.GrowthRate), " ", "-")),
 		},
-		"gender_rate":  genderRate,
+		"gender_rate":   genderRate,
 		"hatch_counter": parseIntOrNil(deref(p.EggCycles)),
-		"egg_groups":   formatEggGroups(p.EggGroups),
+		"egg_groups":    formatEggGroups(p.EggGroups),
 		"flavor_text_entries": []map[string]any{
 			{
 				"flavor_text": "", // we don't have flavor text in our DB

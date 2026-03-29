@@ -6,35 +6,35 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/pokedex-api/v2/db"
+	"github.com/pokedex-api/db"
 )
 
 // Mapping from PokeAPI-style version-group slugs to our DB game names.
 var versionGroupToGame = map[string][]string{
-	"red-blue":                         {"Red/Blue/Yellow"},
-	"yellow":                           {"Red/Blue/Yellow"},
-	"gold-silver":                      {"Gold/Silver/Crystal"},
-	"crystal":                          {"Gold/Silver/Crystal"},
-	"ruby-sapphire":                    {"Ruby/Sapphire/Emerald"},
-	"emerald":                          {"Ruby/Sapphire/Emerald"},
-	"firered-leafgreen":                {"FireRed/LeafGreen"},
-	"diamond-pearl":                    {"Diamond/Pearl"},
-	"platinum":                         {"Platinum"},
-	"heartgold-soulsilver":             {"HeartGold/SoulSilver"},
-	"black-white":                      {"Black/White"},
-	"black-2-white-2":                  {"Black 2/White 2"},
-	"x-y":                              {"X/Y"},
-	"omega-ruby-alpha-sapphire":        {"Omega Ruby/Alpha Sapphire"},
-	"sun-moon":                         {"Sun/Moon"},
-	"ultra-sun-ultra-moon":             {"Ultra Sun/Ultra Moon"},
-	"lets-go-pikachu-lets-go-eevee":    {"Let's Go Pikachu/Eevee"},
-	"sword-shield":                     {"Sword/Shield"},
-	"brilliant-diamond-shining-pearl":  {"Brilliant Diamond/Shining Pearl"},
-	"legends-arceus":                   {"Legends: Arceus"},
-	"scarlet-violet":                   {"Scarlet/Violet"},
-	"the-teal-mask":                    {"The Teal Mask"},
-	"the-indigo-disk":                  {"The Indigo Disk"},
-	"legends-z-a":                      {"Legends: Z-A"},
+	"red-blue":                        {"Red/Blue/Yellow"},
+	"yellow":                          {"Red/Blue/Yellow"},
+	"gold-silver":                     {"Gold/Silver/Crystal"},
+	"crystal":                         {"Gold/Silver/Crystal"},
+	"ruby-sapphire":                   {"Ruby/Sapphire/Emerald"},
+	"emerald":                         {"Ruby/Sapphire/Emerald"},
+	"firered-leafgreen":               {"FireRed/LeafGreen"},
+	"diamond-pearl":                   {"Diamond/Pearl"},
+	"platinum":                        {"Platinum"},
+	"heartgold-soulsilver":            {"HeartGold/SoulSilver"},
+	"black-white":                     {"Black/White"},
+	"black-2-white-2":                 {"Black 2/White 2"},
+	"x-y":                             {"X/Y"},
+	"omega-ruby-alpha-sapphire":       {"Omega Ruby/Alpha Sapphire"},
+	"sun-moon":                        {"Sun/Moon"},
+	"ultra-sun-ultra-moon":            {"Ultra Sun/Ultra Moon"},
+	"lets-go-pikachu-lets-go-eevee":   {"Let's Go Pikachu/Eevee"},
+	"sword-shield":                    {"Sword/Shield"},
+	"brilliant-diamond-shining-pearl": {"Brilliant Diamond/Shining Pearl"},
+	"legends-arceus":                  {"Legends: Arceus"},
+	"scarlet-violet":                  {"Scarlet/Violet"},
+	"the-teal-mask":                   {"The Teal Mask"},
+	"the-indigo-disk":                 {"The Indigo Disk"},
+	"legends-z-a":                     {"Legends: Z-A"},
 }
 
 // Pokedex name registry: maps pokedex ID/name to the game + dex type.

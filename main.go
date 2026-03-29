@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/pokedex-api/v2/db"
-	"github.com/pokedex-api/v2/handlers"
+	"github.com/pokedex-api/db"
+	"github.com/pokedex-api/handlers"
 )
 
 func main() {
