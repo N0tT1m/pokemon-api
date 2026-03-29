@@ -82,8 +82,8 @@ class PokemonDbAllPokemon(scrapy.Spider):
         Structure:
           div.infocard-list-evo
             div.infocard              (a Pokemon card)
-            span.infocard-arrow       (arrow with method text)  \  these alternate
-            div.infocard              (next Pokemon card)       /  for linear chains
+            span.infocard-arrow       (arrow with method text)
+            div.infocard              (next Pokemon card)
             span.infocard-evo-split   (contains branches)
               div.infocard-list-evo   (branch 1: arrow + card + ...)
               div.infocard-list-evo   (branch 2: arrow + card + ...)
