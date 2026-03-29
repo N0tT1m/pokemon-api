@@ -26,6 +26,8 @@ services:
       PORT: "158"
       TLS_CERT: /app/certs/fullchain.pem
       TLS_KEY: /app/certs/privkey.pem
+    volumes:
+      - ./certs:/app/certs:ro 
     depends_on:
       db:
         condition: service_healthy
