@@ -7,7 +7,7 @@ import (
 	"os"
 
 	"github.com/N0tT1m/pokedex-api/db"
-	"github.com/N0tT1m/pokedex-api/handlers"
+	"github.com/N0tT1m/pokemon-api/handlers"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/N0tT1m/pokedex-api/db"
+	"github.com/N0tT1m/pokemon-api/db"
 	"github.com/go-chi/chi/v5"
 )
 
