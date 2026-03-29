@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/N0tT1m/pokedex-api/db"
+	"github.com/N0tT1m/pokedex-api/handlers"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/pokedex-api/db"
-	"github.com/pokedex-api/handlers"
 )
 
 func main() {

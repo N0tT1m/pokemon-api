@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/N0tT1m/pokedex-api/db"
 	"github.com/go-chi/chi/v5"
-	"github.com/pokedex-api/db"
 )
 
 // Mapping from PokeAPI-style version-group slugs to our DB game names.

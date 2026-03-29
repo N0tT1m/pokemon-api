@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/N0tT1m/pokedex-api/db"
+	"github.com/N0tT1m/pokedex-api/models"
 	"github.com/go-chi/chi/v5"
-	"github.com/pokedex-api/db"
-	"github.com/pokedex-api/models"
 )
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
