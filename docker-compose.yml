@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pokedex
+      POSTGRES_PASSWORD: pokedex
+      POSTGRES_DB: pokedex
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pokedex"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "158:158"
+    environment:
+      DATABASE_URI: postgresql://pokedex:pokedex@db:5432/pokedex
+      PORT: "158"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

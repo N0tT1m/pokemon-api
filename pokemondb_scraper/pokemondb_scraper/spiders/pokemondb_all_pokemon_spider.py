@@ -1,130 +1,268 @@
-from pathlib import Path
-
 import scrapy
-import pandas as pd
+
+import re
+
+from pokemondb_scraper.items import (
+    PokemonItem,
+    TypeDefenseItem,
+    EvolutionItem,
+    MoveItem,
+    LocationItem,
+    GameNationalDexItem,
+)
+
+# Unicode fraction → float mapping for type defense values
+FRACTION_MAP = {
+    '0':  0.0,
+    '½':  0.5,
+    '¼':  0.25,
+    '2':  2.0,
+    '4':  4.0,
+    '1':  1.0,
+}
+
+# Stat key normalization from the HTML table headers
+STAT_KEYS = {
+    'HP':      'hp',
+    'Attack':  'attack',
+    'Defense': 'defense',
+    'Sp. Atk': 'sp_atk',
+    'Sp. Def': 'sp_def',
+    'Speed':   'speed',
+    'Total':   'total',
+}
+
+
+def parse_int(value):
+    """Parse a string to int, returning None for dashes or empty strings."""
+    if not value:
+        return None
+    cleaned = value.strip().replace('—', '').replace('–', '').replace('-', '')
+    if not cleaned:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError:
+        return None
 
 
 class PokemonDbAllPokemon(scrapy.Spider):
     name = "pokemondb_pokemon"
     allowed_domains = ["pokemondb.net"]
-    target_word = "/pokedex/"
-    base_url = "https://pokemondb.net"
-    pokemon_urls = []
-    tm_moves = []
-    locations = []
-    level_moves = []
-    data = {}
-    type_defenses = {}
-    evolution_chain = []
-    evolutions = []
-
-    async def start(self):
-        urls = ["https://pokemondb.net/pokedex/all"]
-
-        for url in urls:
-            yield scrapy.Request(url=url, callback=self.parse)
+    start_urls = ["https://pokemondb.net/pokedex/all"]
 
     def parse(self, response):
-        for next_page in response.css('a::attr(href)').getall():
-            if self.target_word in next_page:
-                url = self.base_url + next_page
-                self.pokemon_urls.append(url)
-        for url in self.pokemon_urls:
-            yield scrapy.Request(url=url, callback=self.parse_pokemon)
-        
+        seen = set()
+        for cell in response.css('table#pokedex tbody tr td.cell-name'):
+            name = cell.css('a.ent-name::text').get('')
+            href = cell.css('a.ent-name::attr(href)').get('')
+            if name and href and name not in seen:
+                seen.add(name)
+                yield response.follow(href, callback=self.parse_pokemon)
+
+    def _parse_card(self, card):
+        """Extract Pokemon info from an infocard div."""
+        return {
+            'number': card.xpath('.//small[1]/text()').get('').strip(),
+            'name': card.xpath('.//a[has-class("ent-name")]/text()').get('').strip(),
+            'url': card.xpath('.//a[has-class("ent-name")]/@href').get('').strip(),
+            'types': card.xpath('.//small[2]/a/text()').getall(),
+        }
+
+    def _parse_arrow(self, arrow):
+        """Extract evolution method text from an infocard-arrow span."""
+        # Get all text content including link text, e.g. "(use Tart Apple)"
+        texts = arrow.xpath('.//small//text()').getall()
+        return ' '.join(t.strip() for t in texts).strip().strip('()')
+
+    def _walk_evo_tree(self, evo_list_node, pokemon_name, parent_name, counter):
+        """
+        Recursively walk a div.infocard-list-evo node.
+
+        Structure:
+          div.infocard-list-evo
+            div.infocard              (a Pokemon card)
+            span.infocard-arrow       (arrow with method text)  \  these alternate
+            div.infocard              (next Pokemon card)       /  for linear chains
+            span.infocard-evo-split   (contains branches)
+              div.infocard-list-evo   (branch 1: arrow + card + ...)
+              div.infocard-list-evo   (branch 2: arrow + card + ...)
+        """
+        # Direct child elements (cards, arrows, split containers)
+        children = evo_list_node.xpath('./*')
+
+        pending_arrow = None  # the most recent arrow text before a card
+        last_card_name = parent_name  # tracks the "from" Pokemon for the next card
+
+        for child in children:
+            tag = child.xpath('name()').get('')
+            classes = child.xpath('@class').get('')
+
+            if 'infocard-arrow' in classes:
+                # This is an arrow — save the method text for the next card
+                pending_arrow = self._parse_arrow(child)
+
+            elif 'infocard-evo-split' in classes:
+                # Branch container — each child div.infocard-list-evo is a separate branch
+                for branch in child.xpath('./div[has-class("infocard-list-evo")]'):
+                    yield from self._walk_evo_tree(branch, pokemon_name, last_card_name, counter)
+
+            elif tag == 'div' and 'infocard' in classes and 'infocard-arrow' not in classes:
+                # This is a Pokemon card
+                info = self._parse_card(child)
+                if not info['name']:
+                    continue
+
+                evolves_from = last_card_name
+                evolves_via = pending_arrow
+                pending_arrow = None
+
+                order = counter[0]
+                counter[0] += 1
+
+                yield EvolutionItem(
+                    pokemon_name=pokemon_name,
+                    number=info['number'],
+                    evo_name=info['name'],
+                    evo_url=info['url'],
+                    types=info['types'],
+                    evolves_via=evolves_via,
+                    evolves_from=evolves_from,
+                    chain_order=order,
+                )
+
+                last_card_name = info['name']
+
     def parse_pokemon(self, response):
-        # Find each h2 and the table that follows it
+        pokemon_name = response.css('main h1::text').get('').strip()
+        if not pokemon_name:
+            return
+
+        # --- Vitals tables ---
+        vitals = {}
         for section in response.xpath('//h2[following-sibling::table[has-class("vitals-table")]]'):
             header = section.xpath('./text()').get('').strip()
             table = section.xpath('./following-sibling::table[has-class("vitals-table")][1]')
-            
-            rows = {}
             for row in table.xpath('.//tbody/tr'):
-                key = row.xpath('./th//text()').getall()
-                key = ' '.join(k.strip() for k in key).strip()
+                key = ' '.join(row.xpath('./th//text()').getall()).strip()
                 value = ' '.join(row.xpath('./td//text()').getall()).strip()
                 if key:
-                    rows[key] = value
-            
-            self.data[header] = rows
+                    vitals[key] = value
 
-        for row in table.xpath('.//tbody/tr[not(parent::tfoot)]'):
+        # --- Base stats table ---
+        stats = {}
+        for row in response.xpath('//h2[contains(text(),"Base stats")]/following-sibling::table[1]//tbody/tr[not(parent::tfoot)]'):
             key = row.xpath('./th/text()').get('').strip()
             cells = [c.strip() for c in row.xpath('./td//text()').getall() if c.strip()]
             if key and cells:
-                rows[key] = {
-                    'base': cells[0],
-                    'min': cells[1] if len(cells) > 1 else None,
-                    'max': cells[2] if len(cells) > 2 else None,
-                }
+                field = STAT_KEYS.get(key)
+                if field:
+                    stats[field] = parse_int(cells[0])
 
+        item = PokemonItem(
+            name=pokemon_name,
+            url=response.url,
+            national_no=vitals.get('National №', ''),
+            types=vitals.get('Type', '').split(),
+            species=vitals.get('Species', ''),
+            height=vitals.get('Height', ''),
+            weight=vitals.get('Weight', ''),
+            abilities=vitals.get('Abilities', '').split(','),
+            ev_yield=vitals.get('EV yield', ''),
+            catch_rate=vitals.get('Catch rate', ''),
+            base_friendship=vitals.get('Base Friendship', ''),
+            base_exp=vitals.get('Base Exp.', ''),
+            growth_rate=vitals.get('Growth Rate', ''),
+            egg_groups=[g.strip() for g in vitals.get('Egg Groups', '').split(',')],
+            gender_ratio=vitals.get('Gender', ''),
+            egg_cycles=vitals.get('Egg cycles', ''),
+            hp=stats.get('hp'),
+            attack=stats.get('attack'),
+            defense=stats.get('defense'),
+            sp_atk=stats.get('sp_atk'),
+            sp_def=stats.get('sp_def'),
+            speed=stats.get('speed'),
+            total=stats.get('total'),
+        )
+        yield item
+
+        # --- Type defenses ---
         for cell in response.xpath('//table[has-class("type-table")]//tr[td]//td'):
-            type_name = cell.xpath('./@title').get('').split('→')[0].strip()
-            value = cell.xpath('./text()').get('1').strip()  # empty cell = 1x
+            type_name = cell.xpath('./@title').get('').split('\u2192')[0].strip()
+            raw_value = cell.xpath('./text()').get('1').strip()
             if type_name:
-                self.type_defenses[type_name] = value
+                yield TypeDefenseItem(
+                    pokemon_name=pokemon_name,
+                    type_name=type_name,
+                    multiplier=FRACTION_MAP.get(raw_value, 1.0),
+                )
 
-        arrow_texts = response.xpath('//div[has-class("infocard-list-evo")]//span[has-class("infocard-arrow")]//small/text()').getall()
+        # --- Evolution chain (recursive tree walk) ---
+        evo_root = response.xpath('//div[has-class("infocard-list-evo")][1]')
+        if evo_root:
+            evo_counter = [0]  # mutable counter for chain_order
+            for evo_item in self._walk_evo_tree(evo_root, pokemon_name, None, evo_counter):
+                yield evo_item
 
-        for card in response.xpath('//div[has-class("infocard-list-evo")]/div[has-class("infocard")]'):
-            self.evolutions.append({
-                'number': card.xpath('.//small[1]/text()').get('').strip(),
-                'name':   card.xpath('.//a[has-class("ent-name")]/text()').get('').strip(),
-                'url':    card.xpath('.//a[has-class("ent-name")]/@href').get('').strip(),
-                'types':  card.xpath('.//small[2]/a/text()').getall(),
-            })
-
-        # Zip evolutions with the arrows between them
-        for i, evo in enumerate(self.evolutions):
-            if i < len(arrow_texts):
-                evo['evolves_via'] = arrow_texts[i].strip('()')
-            else:
-                evo['evolves_via'] = None
-            self.evolution_chain.append(evo)
-
-        for row in response.xpath('//table//tbody/tr[th and td]'):
+        # --- Locations ---
+        for row in response.xpath('//h2[contains(text(),"Where to find")]/following-sibling::table[1]//tbody/tr[th and td]'):
             games = row.xpath('./th//span/text()').getall()
             location_links = row.xpath('./td//a[@href]/text()').getall()
-            location_text = row.xpath('./td//small/text()').get('')  # fallback text
+            location_text = row.xpath('./td//small/text()').get('')
 
-            self.locations.append({
-                'games': [g.strip() for g in games],
-                'locations': location_links if location_links else [location_text.strip()],
-            })
+            yield LocationItem(
+                pokemon_name=pokemon_name,
+                games=[g.strip() for g in games],
+                locations=location_links if location_links else [location_text.strip()],
+            )
 
-        # TM moves — table whose first header is "TM"
-        for row in response.xpath('//table[has-class("data-table")][.//th[contains(., "TM")]]//tbody/tr'):
-            self.tm_moves.append({
-                'tm':       row.xpath('./td[1]//text()').get('').strip(),
-                'name':     row.xpath('./td[2]//a[@class="ent-name"]/text()').get('').strip(),
-                'type':     row.xpath('./td[3]//a/text()').get('').strip(),
-                'category': row.xpath('./td[4]//img/@alt').get('').strip(),
-                'power':    row.xpath('./td[5]/text()').get('').strip(),
-                'accuracy': row.xpath('./td[6]/text()').get('').strip(),
-            })
+        # --- Moves: level-up ---
+        for row in response.xpath(
+            '//h3[contains(text(),"Moves learnt by level up")]/following-sibling::table[1]//tbody/tr'
+        ):
+            yield MoveItem(
+                pokemon_name=pokemon_name,
+                learn_method='level-up',
+                level_or_tm=row.xpath('./td[1]//text()').get('').strip(),
+                move_name=row.xpath('./td[2]//a[@class="ent-name"]/text()').get('').strip(),
+                type=row.xpath('./td[3]//a/text()').get('').strip(),
+                category=row.xpath('./td[4]//img/@alt').get('').strip(),
+                power=parse_int(row.xpath('./td[5]/text()').get('')),
+                accuracy=parse_int(row.xpath('./td[6]/text()').get('')),
+            )
 
-        for row in response.xpath('//table[has-class("data-table")]//tbody/tr'):
-            first_cell = row.xpath('./td[1]')
-            is_tm = bool(first_cell.xpath('./a').get())
+        # --- Moves: TM ---
+        for row in response.xpath(
+            '//h3[contains(text(),"Moves learnt by TM")]/following-sibling::table[1]//tbody/tr'
+        ):
+            yield MoveItem(
+                pokemon_name=pokemon_name,
+                learn_method='tm',
+                level_or_tm=row.xpath('./td[1]//text()').get('').strip(),
+                move_name=row.xpath('./td[2]//a[@class="ent-name"]/text()').get('').strip(),
+                type=row.xpath('./td[3]//a/text()').get('').strip(),
+                category=row.xpath('./td[4]//img/@alt').get('').strip(),
+                power=parse_int(row.xpath('./td[5]/text()').get('')),
+                accuracy=parse_int(row.xpath('./td[6]/text()').get('')),
+            )
 
-            move = {
-                'learn_method': 'tm' if is_tm else 'level-up',
-                'level_or_tm': first_cell.xpath('.//text()').get('').strip(),
-                'name': row.xpath('./td[2]//a[@class="ent-name"]/text()').get('').strip(),
-                'type': row.xpath('./td[3]//a/text()').get('').strip(),
-                'category': row.xpath('./td[4]//img/@alt').get('').strip(),
-                'power': row.xpath('./td[5]/text()').get('').strip(),
-                'accuracy': row.xpath('./td[6]/text()').get('').strip(),
-            }
-            self.level_moves.append(move)
-
-    tm_moves_df = pd.DataFrame(tm_moves)
-    locations_df = pd.DataFrame(locations)
-    level_moves_df = pd.DataFrame(level_moves)
-    data_df = pd.DataFrame(data)
-    type_defenses_df = pd.DataFrame(type_defenses)
-    evolution_chain_df = pd.DataFrame(evolution_chain)
-    evolutions_df = pd.DataFrame(evolutions)
-
-    dfs = [tm_moves_df, locations_df, level_moves_df, data_df, type_defenses_df, evolution_chain_df, evolutions_df]
-    dfs.to_csv('combined.csv', index=False)
+        # --- Game national dex (from "Local №" row) ---
+        # Each text node in the Local № td looks like "0025 (Red/Blue/Yellow)"
+        national_no = parse_int(vitals.get('National №', ''))
+        if national_no:
+            local_td = response.xpath(
+                '//table[has-class("vitals-table")]//th[contains(text(),"Local")]/following-sibling::td[1]'
+            )
+            for text_node in local_td.xpath('.//text()').getall():
+                text_node = text_node.strip()
+                match = re.match(r'\d+\s*\((.+)\)', text_node)
+                if match:
+                    game_str = match.group(1).strip()
+                    # Split combined game names like "Red/Blue/Yellow"
+                    # but keep compound names like "Brilliant Diamond/Shining Pearl" intact
+                    # These are already individual entries per line on pokemondb
+                    yield GameNationalDexItem(
+                        game=game_str,
+                        pokemon_name=pokemon_name,
+                        national_no=national_no,
+                    )

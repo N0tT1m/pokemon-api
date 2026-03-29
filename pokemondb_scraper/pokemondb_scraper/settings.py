@@ -58,9 +58,12 @@ DOWNLOAD_DELAY = 1
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    "pokemondb_scraper.pipelines.PokemondbScraperPipeline": 300,
-#}
+ITEM_PIPELINES = {
+    "pokemondb_scraper.pipelines.PostgresPipeline": 300,
+}
+
+# Postgres connection string
+DATABASE_URI = "postgresql://pokedex:pokedex@localhost:5432/pokedex"
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
