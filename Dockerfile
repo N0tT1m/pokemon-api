@@ -18,8 +18,6 @@ COPY --from=builder /app/pokedex-api .
 COPY pokemondb_scraper/ /app/pokemondb_scraper/
 
 RUN mkdir /app/certs/
-COPY privkey.pem /app/certs/privkey.pem
-COPY fullchain.pem /app/certs/fullchain.pem
 
 # Copy entrypoint
 COPY entrypoint.sh .
