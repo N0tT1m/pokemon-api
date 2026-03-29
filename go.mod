@@ -1,4 +1,4 @@
-module github.com/pokemon-api/v2
+module github.com/pokemon-api
 
 go 1.26.1
 
