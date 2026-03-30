@@ -21,63 +21,106 @@ class PokemonDbLocationsSpider(scrapy.Spider):
     start_urls = ["https://pokemondb.net/location"]
 
     def parse(self, response):
-        # Find all location links grouped by region
+        # Location links are inside tab panels: div#loc-{region}
         for region_slug, region_name in REGIONS.items():
-            # Find the section for this region
-            section = response.xpath(
-                f'//h2[contains(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"{region_slug}")]/following-sibling::*[1]'
-            )
-            if not section:
-                # Try finding by class or just grab all links mentioning the region
-                section = response.xpath(f'//a[contains(@href, "/location/{region_slug}")]')
-
-            for link in response.xpath(f'//a[contains(@href, "/location/{region_slug}-")]/@href').getall():
+            panel = response.css(f'div#loc-{region_slug}')
+            if not panel:
+                # Fallback: find links by href pattern
+                pass
+            for link in panel.css(f'a[href^="/location/{region_slug}-"]::attr(href)').getall():
                 yield response.follow(
                     link,
                     callback=self.parse_location,
-                    cb_kwargs={'region': region_name, 'route_name': link.split('/')[-1].replace(f'{region_slug}-', '').replace('-', ' ').title()},
+                    cb_kwargs={'region': region_name},
                 )
+            # Also try global fallback
+            if not panel:
+                for link in response.xpath(f'//a[contains(@href, "/location/{region_slug}-")]/@href').getall():
+                    yield response.follow(
+                        link,
+                        callback=self.parse_location,
+                        cb_kwargs={'region': region_name},
+                    )
 
-    def parse_location(self, response, region, route_name):
+    def parse_location(self, response, region):
         # Get actual location name from page title
         title = response.css('main h1::text').get('')
-        if title:
-            route_name = title.strip()
+        if not title:
+            title = response.css('h1::text').get('')
+        route_name = title.strip().split(',')[0].strip() if title else 'Unknown'
 
-        # Parse encounter tables - they have Pokemon cards organized by encounter method
-        for section in response.xpath('//h3 | //h2'):
-            method_text = section.xpath('.//text()').get('').strip()
-            if not method_text:
-                continue
+        # Parse encounter tables organized by generation (h2) and method (h3)
+        # Structure: h2 (generation) -> h3 (method) -> div.resp-scroll > table.data-table
+        current_method = None
 
-            # The table following this header contains encounter data
-            table = section.xpath('./following-sibling::table[1]')
-            if not table:
-                continue
+        for element in response.xpath('//main//*[self::h2 or self::h3 or self::table[has-class("data-table")] or self::div[contains(@class,"resp-scroll")]]'):
+            tag = element.xpath('name()').get('')
 
-            for row in table.xpath('.//tbody/tr'):
-                pokemon_name = row.xpath('.//td[1]//a[has-class("ent-name")]/text()').get('')
-                if not pokemon_name:
-                    pokemon_name = row.xpath('.//td[1]//a/text()').get('').strip()
-                if not pokemon_name:
+            if tag == 'h3':
+                current_method = element.xpath('.//text()').get('').strip()
+            elif tag == 'h2':
+                # Reset method on new generation section
+                current_method = None
+            elif tag == 'div' or tag == 'table':
+                # Get the table (may be inside resp-scroll div)
+                if tag == 'div':
+                    table = element.xpath('.//table[has-class("data-table")]')
+                else:
+                    table = element
+
+                if not table:
                     continue
 
-                games = row.xpath('.//td[1]//small/text()').getall()
-                games = [g.strip() for g in games if g.strip()]
+                # Check for sub-encounter labels in multi-tbody tables
+                for tbody in table.xpath('.//tbody'):
+                    sub_method = tbody.xpath('.//th[has-class("cell-loc-status")]/text()').get('')
+                    effective_method = sub_method.strip() if sub_method and sub_method.strip() else current_method
 
-                # Rarity info
-                rarity = row.xpath('.//td[last()]//text()').get('').strip()
+                    for row in tbody.xpath('./tr'):
+                        # Skip spacer and status header rows
+                        if row.xpath('.//th[has-class("cell-loc-spacer") or has-class("cell-loc-status")]'):
+                            continue
 
-                # Level range
-                level_text = row.xpath('.//td[2]//text()').get('').strip()
+                        pokemon_name = row.css('a.ent-name::text').get('')
+                        if not pokemon_name:
+                            pokemon_name = row.xpath('.//td[1]//a/text()').get('')
+                        if not pokemon_name:
+                            continue
 
-                yield LocationEncounterItem(
-                    region=region,
-                    route_name=route_name,
-                    pokemon_name=pokemon_name.strip(),
-                    games=games if games else [],
-                    encounter_method=method_text if method_text else None,
-                    rarity=rarity if rarity else None,
-                    level_range=level_text if level_text else None,
-                    time_of_day=None,
-                )
+                        # Games: non-blank game cells
+                        games = row.css('td.cell-loc-game:not(.cell-loc-game-blank)::text').getall()
+                        games = [g.strip() for g in games if g.strip()]
+
+                        # Rarity: try percentage badge first, then icon alt text
+                        rarity = row.css('span.icon-rarity::text').get('')
+                        if not rarity:
+                            rarity_img = row.xpath('.//td//img[has-class("icon-loc")]/@alt').get('')
+                            if rarity_img and rarity_img.strip().lower() not in ('morning', 'day', 'night'):
+                                rarity = rarity_img.strip()
+
+                        # Levels: look for cell-num td that's not the rarity
+                        level_range = ''
+                        num_cells = row.css('td.cell-num')
+                        for cell in num_cells:
+                            text = cell.xpath('.//text()').get('').strip()
+                            # Skip rarity cells (they contain span.icon-rarity)
+                            if cell.css('span.icon-rarity'):
+                                continue
+                            if text and text != rarity:
+                                level_range = text
+                                break
+
+                        # Time of day
+                        time_imgs = row.xpath('.//td[contains(@class,"cell-fixed")]//img[has-class("icon-loc")]/@alt').getall()
+                        time_of_day = ', '.join(t.strip() for t in time_imgs if t.strip()) if time_imgs else None
+
+                        yield LocationEncounterItem(
+                            region=region,
+                            route_name=route_name,
+                            pokemon_name=pokemon_name.strip(),
+                            games=games if games else [],
+                            encounter_method=effective_method if effective_method else None,
+                            rarity=rarity.strip() if rarity else None,
+                            level_range=level_range if level_range else None,
+                            time_of_day=time_of_day,
+                        )

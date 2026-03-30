@@ -21,6 +21,8 @@ from pokemondb_scraper.items import (
     BerryFlavorItem,
     ItemLocationItem,
     TmLocationItem,
+    PokemonNameItem,
+    PokemonSpriteItem,
 )
 
 SCHEMA_SQL = """
@@ -210,6 +212,23 @@ CREATE TABLE IF NOT EXISTS tm_locations (
     location   TEXT NOT NULL,
     UNIQUE(tm_number, game, move_name)
 );
+
+CREATE TABLE IF NOT EXISTS pokemon_names (
+    id             SERIAL PRIMARY KEY,
+    pokemon_name   TEXT NOT NULL REFERENCES pokemon(name) ON DELETE CASCADE,
+    language       TEXT NOT NULL,
+    localized_name TEXT NOT NULL,
+    UNIQUE(pokemon_name, language)
+);
+
+CREATE TABLE IF NOT EXISTS pokemon_sprites (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL REFERENCES pokemon(name) ON DELETE CASCADE,
+    sprite_type  TEXT NOT NULL,
+    generation   TEXT,
+    url          TEXT NOT NULL,
+    UNIQUE(pokemon_name, sprite_type, COALESCE(generation, ''), url)
+);
 """
 
 
@@ -274,6 +293,10 @@ class PostgresPipeline:
             self._upsert_item_location(adapter)
         elif isinstance(item, TmLocationItem):
             self._upsert_tm_location(adapter)
+        elif isinstance(item, PokemonNameItem):
+            self._upsert_pokemon_name(adapter)
+        elif isinstance(item, PokemonSpriteItem):
+            self._upsert_pokemon_sprite(adapter)
 
         self.conn.commit()
         return item
@@ -464,4 +487,19 @@ class PostgresPipeline:
             INSERT INTO tm_locations (tm_number, move_name, game, location)
             VALUES (%(tm_number)s, %(move_name)s, %(game)s, %(location)s)
             ON CONFLICT (tm_number, game, move_name) DO NOTHING
+        """, dict(a))
+
+    def _upsert_pokemon_name(self, a):
+        self.cur.execute("""
+            INSERT INTO pokemon_names (pokemon_name, language, localized_name)
+            VALUES (%(pokemon_name)s, %(language)s, %(localized_name)s)
+            ON CONFLICT (pokemon_name, language) DO UPDATE SET
+                localized_name = EXCLUDED.localized_name
+        """, dict(a))
+
+    def _upsert_pokemon_sprite(self, a):
+        self.cur.execute("""
+            INSERT INTO pokemon_sprites (pokemon_name, sprite_type, generation, url)
+            VALUES (%(pokemon_name)s, %(sprite_type)s, %(generation)s, %(url)s)
+            ON CONFLICT (pokemon_name, sprite_type, COALESCE(generation, ''), url) DO NOTHING
         """, dict(a))

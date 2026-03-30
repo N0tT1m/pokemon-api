@@ -152,3 +152,14 @@ type TmLocation struct {
 	Game     string `json:"game"`
 	Location string `json:"location"`
 }
+
+type PokemonName struct {
+	Language      string `json:"language"`
+	LocalizedName string `json:"localized_name"`
+}
+
+type PokemonSprite struct {
+	SpriteType string `json:"sprite_type"`
+	Generation string `json:"generation"`
+	URL        string `json:"url"`
+}

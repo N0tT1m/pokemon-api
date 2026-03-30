@@ -222,82 +222,108 @@ class PokemonDbAllPokemon(scrapy.Spider):
             for evo_item in self._walk_evo_tree(evo_root, pokemon_name, None, evo_counter):
                 yield evo_item
 
-        # --- Locations ---
-        for row in response.xpath('//h2[contains(text(),"Where to find")]/following-sibling::table[1]//tbody/tr[th and td]'):
-            games = row.xpath('./th//span/text()').getall()
-            location_links = row.xpath('./td//a[@href]/text()').getall()
-            location_text = row.xpath('./td//small/text()').get('')
+        # --- Locations (dl/dt/dd structure) ---
+        location_dl = response.xpath('//h2[contains(text(),"Where to find")]/following-sibling::div[1]//dl | //h2[contains(text(),"Where to find")]/following-sibling::dl[1]')
+        if not location_dl:
+            location_dl = response.xpath('//h2[contains(text(),"Where to find")]/following-sibling::*[self::dl or self::div][1]//dl | //h2[contains(text(),"Where to find")]/following-sibling::dl[1]')
+        for dt in location_dl.xpath('./dt'):
+            games_raw = dt.xpath('.//text()').getall()
+            games = [g.strip() for g in games_raw if g.strip()]
+            dd = dt.xpath('./following-sibling::dd[1]')
+            location_links = dd.xpath('.//a/text()').getall()
+            location_text = dd.xpath('.//text()').getall()
+            location_text = ' '.join(t.strip() for t in location_text).strip()
 
-            yield LocationItem(
-                pokemon_name=pokemon_name,
-                games=[g.strip() for g in games],
-                locations=location_links if location_links else [location_text.strip()],
-            )
+            # Skip "Not available" or "Location data not yet available"
+            if 'not available' in location_text.lower() or 'not yet available' in location_text.lower():
+                continue
 
-        # --- Moves: level-up ---
-        for row in response.xpath(
-            '//h3[contains(text(),"Moves learnt by level up")]/following-sibling::table[1]//tbody/tr'
-        ):
-            yield MoveItem(
-                pokemon_name=pokemon_name,
-                learn_method='level-up',
-                level_or_tm=row.xpath('./td[1]//text()').get('').strip(),
-                move_name=row.xpath('./td[2]//a[@class="ent-name"]/text()').get('').strip(),
-                type=row.xpath('./td[3]//a/text()').get('').strip(),
-                category=row.xpath('./td[4]//img/@alt').get('').strip(),
-                power=parse_int(row.xpath('./td[5]/text()').get('')),
-                accuracy=parse_int(row.xpath('./td[6]/text()').get('')),
-            )
+            locations = [loc.strip() for loc in location_links if loc.strip()] if location_links else [location_text]
+            if games and locations:
+                yield LocationItem(
+                    pokemon_name=pokemon_name,
+                    games=games,
+                    locations=locations,
+                )
 
-        # --- Moves: TM ---
-        for row in response.xpath(
-            '//h3[contains(text(),"Moves learnt by TM")]/following-sibling::table[1]//tbody/tr'
-        ):
-            yield MoveItem(
-                pokemon_name=pokemon_name,
-                learn_method='tm',
-                level_or_tm=row.xpath('./td[1]//text()').get('').strip(),
-                move_name=row.xpath('./td[2]//a[@class="ent-name"]/text()').get('').strip(),
-                type=row.xpath('./td[3]//a/text()').get('').strip(),
-                category=row.xpath('./td[4]//img/@alt').get('').strip(),
-                power=parse_int(row.xpath('./td[5]/text()').get('')),
-                accuracy=parse_int(row.xpath('./td[6]/text()').get('')),
-            )
+        # --- Moves (inside tabbed sections) ---
+        # Moves are inside tab panels; parse all h3 + table pairs across all tabs
+        move_sections = {
+            'Moves learnt by level up': 'level-up',
+            'Moves learnt by TM': 'tm',
+            'Egg moves': 'egg',
+            'Move Tutor moves': 'tutor',
+            'Moves learnt by TR': 'tm',
+        }
+        for h3 in response.xpath('//h3'):
+            header_text = h3.xpath('.//text()').get('').strip()
+            learn_method = None
+            for pattern, method in move_sections.items():
+                if pattern in header_text:
+                    learn_method = method
+                    break
+            if not learn_method:
+                continue
 
-        # --- Moves: Egg moves ---
-        for row in response.xpath(
-            '//h3[contains(text(),"Egg moves")]/following-sibling::table[1]//tbody/tr'
-        ):
-            yield MoveItem(
-                pokemon_name=pokemon_name,
-                learn_method='egg',
-                level_or_tm='—',
-                move_name=row.xpath('./td[1]//a[@class="ent-name"]/text()').get('').strip(),
-                type=row.xpath('./td[2]//a/text()').get('').strip(),
-                category=row.xpath('./td[3]//img/@alt').get('').strip(),
-                power=parse_int(row.xpath('./td[4]/text()').get('')),
-                accuracy=parse_int(row.xpath('./td[5]/text()').get('')),
-            )
+            # The table may be a direct sibling or inside a resp-scroll div
+            table = h3.xpath('./following-sibling::div[1]//table | ./following-sibling::table[1]')
+            if not table:
+                continue
 
-        # --- Moves: Move Tutor ---
-        for row in response.xpath(
-            '//h3[contains(text(),"Move Tutor moves")]/following-sibling::table[1]//tbody/tr'
-        ):
-            yield MoveItem(
-                pokemon_name=pokemon_name,
-                learn_method='tutor',
-                level_or_tm='—',
-                move_name=row.xpath('./td[1]//a[@class="ent-name"]/text()').get('').strip(),
-                type=row.xpath('./td[2]//a/text()').get('').strip(),
-                category=row.xpath('./td[3]//img/@alt').get('').strip(),
-                power=parse_int(row.xpath('./td[4]/text()').get('')),
-                accuracy=parse_int(row.xpath('./td[5]/text()').get('')),
-            )
+            is_egg_or_tutor = learn_method in ('egg', 'tutor')
+            for row in table.xpath('.//tbody/tr'):
+                cells = row.xpath('./td')
+                if not cells:
+                    continue
 
-        # --- Pokedex entries (flavor text) ---
-        for row in response.xpath('//h2[contains(text(),"Pok")][contains(text(),"dex entries")]/following-sibling::table[1]//tbody/tr'):
-            game_names = row.xpath('./th//text()').getall()
-            flavor_text = ' '.join(row.xpath('./td//text()').getall()).strip()
+                if is_egg_or_tutor:
+                    move_name = cells[0].xpath('.//a[has-class("ent-name")]/text()').get('')
+                    if not move_name:
+                        move_name = cells[0].xpath('.//a/text()').get('')
+                    move_type = cells[1].xpath('.//a/text()').get('') if len(cells) > 1 else ''
+                    category = cells[2].xpath('.//img/@alt').get('') if len(cells) > 2 else ''
+                    if not category:
+                        category = cells[2].xpath('.//text()').get('') if len(cells) > 2 else ''
+                    power = parse_int(cells[3].xpath('.//text()').get('')) if len(cells) > 3 else None
+                    accuracy = parse_int(cells[4].xpath('.//text()').get('')) if len(cells) > 4 else None
+                    yield MoveItem(
+                        pokemon_name=pokemon_name,
+                        learn_method=learn_method,
+                        level_or_tm='—',
+                        move_name=(move_name or '').strip(),
+                        type=(move_type or '').strip(),
+                        category=(category or '').strip(),
+                        power=power,
+                        accuracy=accuracy,
+                    )
+                else:
+                    level_or_tm = cells[0].xpath('.//text()').get('') if cells else ''
+                    move_name = cells[1].xpath('.//a[has-class("ent-name")]/text()').get('') if len(cells) > 1 else ''
+                    if not move_name:
+                        move_name = cells[1].xpath('.//a/text()').get('') if len(cells) > 1 else ''
+                    move_type = cells[2].xpath('.//a/text()').get('') if len(cells) > 2 else ''
+                    category = cells[3].xpath('.//img/@alt').get('') if len(cells) > 3 else ''
+                    if not category:
+                        category = cells[3].xpath('.//text()').get('') if len(cells) > 3 else ''
+                    power = parse_int(cells[4].xpath('.//text()').get('')) if len(cells) > 4 else None
+                    accuracy = parse_int(cells[5].xpath('.//text()').get('')) if len(cells) > 5 else None
+                    yield MoveItem(
+                        pokemon_name=pokemon_name,
+                        learn_method=learn_method,
+                        level_or_tm=(level_or_tm or '').strip(),
+                        move_name=(move_name or '').strip(),
+                        type=(move_type or '').strip(),
+                        category=(category or '').strip(),
+                        power=power,
+                        accuracy=accuracy,
+                    )
+
+        # --- Pokedex entries (flavor text, dl/dt/dd structure) ---
+        dex_dl = response.xpath('//h2[contains(text(),"dex entries")]/following-sibling::div[1]//dl | //h2[contains(text(),"dex entries")]/following-sibling::dl[1]')
+        for dt in dex_dl.xpath('./dt'):
+            game_names = dt.xpath('.//text()').getall()
+            dd = dt.xpath('./following-sibling::dd[1]')
+            flavor_text = ' '.join(dd.xpath('.//text()').getall()).strip()
             if game_names and flavor_text:
                 for game_name in game_names:
                     game_name = game_name.strip()
@@ -308,10 +334,12 @@ class PokemonDbAllPokemon(scrapy.Spider):
                             flavor_text=flavor_text,
                         )
 
-        # --- Multi-language names ---
-        for row in response.xpath('//h2[contains(text(),"Other languages")]/following-sibling::table[1]//tbody/tr'):
-            language = row.xpath('./th/text()').get('').strip()
-            localized = row.xpath('./td[1]/text()').get('').strip()
+        # --- Multi-language names (dl/dt/dd structure) ---
+        names_dl = response.xpath('//h2[contains(text(),"Other languages")]/following-sibling::div[1]//dl | //h2[contains(text(),"Other languages")]/following-sibling::dl[1]')
+        for dt in names_dl.xpath('./dt'):
+            language = dt.xpath('.//text()').get('').strip()
+            dd = dt.xpath('./following-sibling::dd[1]')
+            localized = dd.xpath('.//text()').get('').strip()
             if language and localized:
                 yield PokemonNameItem(
                     pokemon_name=pokemon_name,
