@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -149,8 +150,8 @@ func GetPokemon(w http.ResponseWriter, r *http.Request) {
 		"id":              id,
 		"name":            strings.ToLower(p.Name),
 		"base_experience": parseIntOrNil(deref(p.BaseExp)),
-		"height":          0, // raw decimeters not stored; Flutter formats from this
-		"weight":          0,
+		"height":          parseHeightToDecimeters(deref(p.Height)),
+		"weight":          parseWeightToHectograms(deref(p.Weight)),
 		"types":           types,
 		"abilities":       abilities,
 		"stats":           stats,
@@ -439,9 +440,7 @@ func buildEvolutionTree(evos []models.Evolution) map[string]any {
 	for i, e := range evos {
 		details := []map[string]any{}
 		if e.EvolvesVia != nil && *e.EvolvesVia != "" {
-			details = append(details, map[string]any{
-				"trigger": map[string]string{"name": "level-up"},
-			})
+			details = append(details, parseEvolvesVia(*e.EvolvesVia))
 		}
 		numID := evoNumID(e)
 		nodes[i] = evoNode{
@@ -458,13 +457,21 @@ func buildEvolutionTree(evos []models.Evolution) map[string]any {
 		nameToIdx[e.Name] = i
 	}
 
-	// Wire parent→child using evolves_from
+	// Wire parent→child using evolves_from, dedup by child name per parent
 	var roots []int
+	parentChildSeen := map[string]map[string]bool{}
 	for i, e := range evos {
 		if e.EvolvesFrom == nil || *e.EvolvesFrom == "" {
 			roots = append(roots, i)
 		} else if parentIdx, ok := nameToIdx[*e.EvolvesFrom]; ok {
-			nodes[parentIdx].children = append(nodes[parentIdx].children, i)
+			parentName := *e.EvolvesFrom
+			if parentChildSeen[parentName] == nil {
+				parentChildSeen[parentName] = map[string]bool{}
+			}
+			if !parentChildSeen[parentName][e.Name] {
+				parentChildSeen[parentName][e.Name] = true
+				nodes[parentIdx].children = append(nodes[parentIdx].children, i)
+			}
 		} else {
 			roots = append(roots, i)
 		}
@@ -486,4 +493,179 @@ func buildEvolutionTree(evos []models.Evolution) map[string]any {
 		return build(roots[0])
 	}
 	return build(0)
+}
+
+// parseHeightToDecimeters parses height text like "0.2 m (0'08\")" to decimeters (int).
+func parseHeightToDecimeters(s string) int {
+	re := regexp.MustCompile(`([\d.]+)\s*m`)
+	matches := re.FindStringSubmatch(s)
+	if len(matches) < 2 {
+		return 0
+	}
+	val, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0
+	}
+	return int(val*10 + 0.5) // meters to decimeters, rounded
+}
+
+// parseWeightToHectograms parses weight text like "0.5 kg (1.1 lbs)" to hectograms (int).
+func parseWeightToHectograms(s string) int {
+	re := regexp.MustCompile(`([\d.]+)\s*kg`)
+	matches := re.FindStringSubmatch(s)
+	if len(matches) < 2 {
+		return 0
+	}
+	val, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0
+	}
+	return int(val*10 + 0.5) // kg to hectograms, rounded
+}
+
+// toAPIName converts a display name to a kebab-case API name.
+func toAPIName(s string) string {
+	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "-"))
+}
+
+// parseEvolvesVia converts evolves_via text into PokeAPI-compatible evolution detail map.
+func parseEvolvesVia(via string) map[string]any {
+	lower := strings.ToLower(strings.TrimSpace(via))
+
+	// Item-based evolution: "use Tart Apple", "use Fire Stone", etc.
+	if strings.HasPrefix(lower, "use ") {
+		re := regexp.MustCompile(`(?i)^use\s+(.+?)(?:\s*,.*)?$`)
+		if m := re.FindStringSubmatch(via); len(m) > 1 {
+			apiName := toAPIName(m[1])
+			return map[string]any{
+				"trigger": map[string]string{"name": "use-item"},
+				"item":    map[string]any{"name": apiName, "url": "/api/v2/item/" + apiName},
+			}
+		}
+	}
+
+	// Level-based: "Level 16", "Level 32, Male", "Level 30, Nighttime", etc.
+	if strings.HasPrefix(lower, "level ") {
+		detail := map[string]any{
+			"trigger": map[string]string{"name": "level-up"},
+		}
+		re := regexp.MustCompile(`(?i)^level\s+(\d+)`)
+		if m := re.FindStringSubmatch(via); len(m) > 1 {
+			lvl, _ := strconv.Atoi(m[1])
+			detail["min_level"] = lvl
+		}
+		// Parse conditions after the level number
+		if strings.Contains(lower, "nighttime") || strings.Contains(lower, ", night") {
+			detail["time_of_day"] = "night"
+		} else if strings.Contains(lower, "daytime") || strings.Contains(lower, ", day") {
+			detail["time_of_day"] = "day"
+		}
+		if strings.Contains(lower, "male") {
+			detail["gender"] = 2
+		} else if strings.Contains(lower, "female") {
+			detail["gender"] = 1
+		}
+		if strings.Contains(lower, "rain") {
+			detail["needs_overworld_rain"] = true
+		}
+		if strings.Contains(lower, "upside down") {
+			detail["turn_upside_down"] = true
+		}
+		return detail
+	}
+
+	// Trade-based: "Trade", "trade holding Kings Rock", "Trade with Karrablast"
+	if strings.HasPrefix(lower, "trade") {
+		detail := map[string]any{
+			"trigger": map[string]string{"name": "trade"},
+		}
+		if re := regexp.MustCompile(`(?i)holding\s+(.+)`); true {
+			if m := re.FindStringSubmatch(via); len(m) > 1 {
+				apiName := toAPIName(m[1])
+				detail["held_item"] = map[string]any{"name": apiName, "url": "/api/v2/item/" + apiName}
+			}
+		}
+		if re := regexp.MustCompile(`(?i)with\s+(\w+)`); true {
+			if m := re.FindStringSubmatch(via); len(m) > 1 {
+				apiName := toAPIName(m[1])
+				detail["trade_species"] = map[string]any{"name": apiName, "url": "/api/v2/pokemon-species/" + apiName}
+			}
+		}
+		return detail
+	}
+
+	// Known move: "after X learned"
+	if strings.Contains(lower, "learned") {
+		re := regexp.MustCompile(`(?i)after\s+(.+?)\s+learned`)
+		if m := re.FindStringSubmatch(via); len(m) > 1 {
+			moveName := toAPIName(m[1])
+			detail := map[string]any{
+				"trigger":    map[string]string{"name": "level-up"},
+				"known_move": map[string]any{"name": moveName, "url": "/api/v2/move/" + moveName},
+			}
+			return detail
+		}
+	}
+
+	// Friendship/happiness based: "high Friendship", "high Friendship , Daytime"
+	if strings.Contains(lower, "friendship") || strings.Contains(lower, "happiness") {
+		detail := map[string]any{
+			"trigger":       map[string]string{"name": "level-up"},
+			"min_happiness": 220,
+		}
+		if strings.Contains(lower, "night") {
+			detail["time_of_day"] = "night"
+		} else if strings.Contains(lower, "day") {
+			detail["time_of_day"] = "day"
+		}
+		return detail
+	}
+
+	// Hold item + condition: "hold Razor Claw , Nighttime"
+	if strings.HasPrefix(lower, "hold ") {
+		re := regexp.MustCompile(`(?i)^hold\s+(.+?)(?:\s*,.*)?$`)
+		detail := map[string]any{
+			"trigger": map[string]string{"name": "level-up"},
+		}
+		if m := re.FindStringSubmatch(via); len(m) > 1 {
+			apiName := toAPIName(m[1])
+			detail["held_item"] = map[string]any{"name": apiName, "url": "/api/v2/item/" + apiName}
+		}
+		if strings.Contains(lower, "night") {
+			detail["time_of_day"] = "night"
+		} else if strings.Contains(lower, "day") {
+			detail["time_of_day"] = "day"
+		}
+		return detail
+	}
+
+	// Critical hits: "achieve 3 critical hits in one battle"
+	if strings.Contains(lower, "critical hits") {
+		return map[string]any{
+			"trigger": map[string]string{"name": "three-critical-hits"},
+		}
+	}
+
+	// Spin: "spin around holding Sweet"
+	if strings.Contains(lower, "spin") {
+		return map[string]any{
+			"trigger": map[string]string{"name": "spin"},
+		}
+	}
+
+	// Recoil damage: "Male, receive 294 recoil damage in battle"
+	if strings.Contains(lower, "recoil damage") {
+		detail := map[string]any{
+			"trigger": map[string]string{"name": "take-damage"},
+		}
+		if strings.Contains(lower, "male") {
+			detail["gender"] = 2
+		}
+		return detail
+	}
+
+	// Default fallback: use "other" trigger so Flutter shows "Special condition"
+	return map[string]any{
+		"trigger": map[string]string{"name": "other"},
+	}
 }

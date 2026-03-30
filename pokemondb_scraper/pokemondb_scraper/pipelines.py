@@ -60,6 +60,9 @@ CREATE TABLE IF NOT EXISTS evolutions (
     chain_order  INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS evolutions_unique_entry
+    ON evolutions (pokemon_name, evo_name, COALESCE(evolves_from, ''));
+
 CREATE TABLE IF NOT EXISTS moves (
     id           SERIAL PRIMARY KEY,
     pokemon_name TEXT NOT NULL REFERENCES pokemon(name) ON DELETE CASCADE,
@@ -193,6 +196,7 @@ class PostgresPipeline:
         self.cur.execute("""
             INSERT INTO evolutions (pokemon_name, number, evo_name, evo_url, types, evolves_via, evolves_from, chain_order)
             VALUES (%(pokemon_name)s, %(number)s, %(evo_name)s, %(evo_url)s, %(types)s, %(evolves_via)s, %(evolves_from)s, %(chain_order)s)
+            ON CONFLICT (pokemon_name, evo_name, COALESCE(evolves_from, '')) DO NOTHING
         """, dict(a))
 
     def _insert_move(self, a):

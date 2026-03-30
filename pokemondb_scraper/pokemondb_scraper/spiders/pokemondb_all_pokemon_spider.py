@@ -82,8 +82,8 @@ class PokemonDbAllPokemon(scrapy.Spider):
         Structure:
           div.infocard-list-evo
             div.infocard              (a Pokemon card)
-            span.infocard-arrow       (arrow with method text)
-            div.infocard              (next Pokemon card)
+            span.infocard-arrow       (arrow with method text) 
+            div.infocard              (next Pokemon card)   
             span.infocard-evo-split   (contains branches)
               div.infocard-list-evo   (branch 1: arrow + card + ...)
               div.infocard-list-evo   (branch 2: arrow + card + ...)
@@ -150,14 +150,29 @@ class PokemonDbAllPokemon(scrapy.Spider):
                     vitals[key] = value
 
         # --- Base stats table ---
+        # The table is inside a div.resp-scroll wrapper, not a direct sibling of the h2
         stats = {}
-        for row in response.xpath('//h2[contains(text(),"Base stats")]/following-sibling::table[1]//tbody/tr[not(parent::tfoot)]'):
+        for row in response.xpath('//h2[contains(text(),"Base stats")]/following-sibling::div[1]//table[1]//tbody/tr'):
             key = row.xpath('./th/text()').get('').strip()
             cells = [c.strip() for c in row.xpath('./td//text()').getall() if c.strip()]
             if key and cells:
                 field = STAT_KEYS.get(key)
                 if field:
                     stats[field] = parse_int(cells[0])
+
+        # --- Abilities (parsed individually from the HTML) ---
+        abilities = []
+        ability_td = response.xpath(
+            '//table[has-class("vitals-table")]//th[contains(text(),"Abilities")]/following-sibling::td[1]'
+        )
+        for link in ability_td.xpath('.//a'):
+            ability_name = link.xpath('./text()').get('').strip()
+            if ability_name:
+                # Check if this link's parent small has "(hidden ability)" text
+                parent_text = ' '.join(link.xpath('./parent::*//text()').getall())
+                if 'hidden ability' in parent_text.lower():
+                    ability_name += ' (Hidden)'
+                abilities.append(ability_name)
 
         item = PokemonItem(
             name=pokemon_name,
@@ -167,7 +182,7 @@ class PokemonDbAllPokemon(scrapy.Spider):
             species=vitals.get('Species', ''),
             height=vitals.get('Height', ''),
             weight=vitals.get('Weight', ''),
-            abilities=vitals.get('Abilities', '').split(','),
+            abilities=abilities,
             ev_yield=vitals.get('EV yield', ''),
             catch_rate=vitals.get('Catch rate', ''),
             base_friendship=vitals.get('Base Friendship', ''),
