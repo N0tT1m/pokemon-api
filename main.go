@@ -58,6 +58,7 @@ func main() {
 
 	// Location encounter endpoints
 	r.Get("/api/v2/location/regions", handlers.ListRegions)
+	r.Get("/api/v2/location/pokemon/{name}", handlers.GetPokemonLocationEncounters)
 	r.Get("/api/v2/location/region/{region}/routes", handlers.ListRoutes)
 	r.Get("/api/v2/location/region/{region}/route/{route}", handlers.GetRouteEncounters)
 

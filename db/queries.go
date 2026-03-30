@@ -469,6 +469,27 @@ func GetAllRegions(ctx context.Context) ([]string, error) {
 	return regions, nil
 }
 
+func GetEncountersByPokemon(ctx context.Context, pokemonName string) ([]models.LocationEncounter, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day
+		FROM location_encounters WHERE LOWER(pokemon_name) = LOWER($1)
+		ORDER BY region, route_name
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var encounters []models.LocationEncounter
+	for rows.Next() {
+		var e models.LocationEncounter
+		if err := rows.Scan(&e.Region, &e.RouteName, &e.PokemonName, &e.Games, &e.EncounterMethod, &e.Rarity, &e.LevelRange, &e.TimeOfDay); err != nil {
+			return nil, err
+		}
+		encounters = append(encounters, e)
+	}
+	return encounters, nil
+}
+
 func GetRoutesByRegion(ctx context.Context, region string) ([]string, error) {
 	rows, err := Pool.Query(ctx, `
 		SELECT DISTINCT route_name FROM location_encounters WHERE LOWER(region) = LOWER($1) ORDER BY route_name

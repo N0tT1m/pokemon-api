@@ -431,6 +431,23 @@ func ListRegions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"regions": regions})
 }
 
+// GET /api/v2/location/pokemon/{name}
+func GetPokemonLocationEncounters(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	encounters, err := db.GetEncountersByPokemon(r.Context(), name)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if encounters == nil {
+		encounters = []models.LocationEncounter{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"pokemon_name": name,
+		"encounters":   encounters,
+	})
+}
+
 // GET /api/v2/location/region/{region}/routes
 func ListRoutes(w http.ResponseWriter, r *http.Request) {
 	region := chi.URLParam(r, "region")
