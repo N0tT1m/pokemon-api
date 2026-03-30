@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS location_encounters (
     time_of_day      TEXT
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS location_encounters_unique ON location_encounters (region, route_name, pokemon_name, COALESCE(encounter_method, ''), COALESCE(games::text, ''));
+CREATE UNIQUE INDEX IF NOT EXISTS location_encounters_unique ON location_encounters (region, route_name, pokemon_name, COALESCE(encounter_method, ''));
 
 CREATE TABLE IF NOT EXISTS berries (
     id                SERIAL PRIMARY KEY,
@@ -400,7 +400,8 @@ class PostgresPipeline:
         self.cur.execute("""
             INSERT INTO location_encounters (region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day)
             VALUES (%(region)s, %(route_name)s, %(pokemon_name)s, %(games)s, %(encounter_method)s, %(rarity)s, %(level_range)s, %(time_of_day)s)
-            ON CONFLICT (region, route_name, pokemon_name, COALESCE(encounter_method, ''), COALESCE(games::text, '')) DO UPDATE SET
+            ON CONFLICT (region, route_name, pokemon_name, COALESCE(encounter_method, '')) DO UPDATE SET
+                games = EXCLUDED.games,
                 rarity = EXCLUDED.rarity,
                 level_range = EXCLUDED.level_range,
                 time_of_day = EXCLUDED.time_of_day
