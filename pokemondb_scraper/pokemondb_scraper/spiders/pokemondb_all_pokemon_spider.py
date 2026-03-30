@@ -369,22 +369,27 @@ class PokemonDbAllPokemon(scrapy.Spider):
                     )
 
         # --- Game national dex (from "Local №" row) ---
-        # Each text node in the Local № td looks like "0025 (Red/Blue/Yellow)"
+        # Format: "0025 " <small class="text-muted">(Yellow/Red/Blue)</small><br>
+        # Number is a bare text node, game name is inside <small>
         national_no = parse_int(vitals.get('National №', ''))
         if national_no:
             local_td = response.xpath(
                 '//table[has-class("vitals-table")]//th[contains(text(),"Local")]/following-sibling::td[1]'
             )
-            for text_node in local_td.xpath('.//text()').getall():
-                text_node = text_node.strip()
-                match = re.match(r'\d+\s*\((.+)\)', text_node)
-                if match:
-                    game_str = match.group(1).strip()
-                    # Split combined game names like "Red/Blue/Yellow"
-                    # but keep compound names like "Brilliant Diamond/Shining Pearl" intact
-                    # These are already individual entries per line on pokemondb
-                    yield GameNationalDexItem(
-                        game=game_str,
-                        pokemon_name=pokemon_name,
-                        national_no=national_no,
+            # Get the full inner HTML and parse number + game pairs
+            all_text_nodes = local_td.xpath('./text()').getall()
+            all_small_nodes = local_td.xpath('./small/text()').getall()
+            for i, num_text in enumerate(all_text_nodes):
+                num_text = num_text.strip()
+                local_no = parse_int(num_text)
+                if local_no is not None and i < len(all_small_nodes):
+                    game_str = all_small_nodes[i].strip().strip('()')
+                    # Remove em-dash suffixes like "X/Y — Central Kalos"
+                    if '\u2014' in game_str:
+                        game_str = game_str.split('\u2014')[0].strip()
+                    if game_str:
+                        yield GameNationalDexItem(
+                            game=game_str,
+                            pokemon_name=pokemon_name,
+                            national_no=national_no,
                     )
