@@ -63,7 +63,7 @@ ITEM_PIPELINES = {
 }
 
 # Postgres connection string
-DATABASE_URI = "postgresql://pokedex:pokedex@localhost:5432/pokedex"
+DATABASE_URI = "postgresql://pokedex:pokedex@192.168.1.74:5432/pokedex"
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html

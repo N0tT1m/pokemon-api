@@ -226,9 +226,11 @@ CREATE TABLE IF NOT EXISTS pokemon_sprites (
     pokemon_name TEXT NOT NULL REFERENCES pokemon(name) ON DELETE CASCADE,
     sprite_type  TEXT NOT NULL,
     generation   TEXT,
-    url          TEXT NOT NULL,
-    UNIQUE(pokemon_name, sprite_type, COALESCE(generation, ''), url)
+    url          TEXT NOT NULL
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pokemon_sprites_unique
+    ON pokemon_sprites(pokemon_name, sprite_type, url, COALESCE(generation, ''));
 """
 
 
