@@ -72,3 +72,83 @@ type PokemonListEntry struct {
 	NationalNo *string  `json:"national_no"`
 	Types      []string `json:"types"`
 }
+
+type ItemDetail struct {
+	Name      string  `json:"name"`
+	Category  *string `json:"category"`
+	Effect    *string `json:"effect"`
+	SpriteURL *string `json:"sprite_url"`
+}
+
+type MoveDetail struct {
+	Name         string  `json:"name"`
+	Type         *string `json:"type"`
+	Category     *string `json:"category"`
+	Power        *int    `json:"power"`
+	Accuracy     *int    `json:"accuracy"`
+	PP           *int    `json:"pp"`
+	Effect       *string `json:"effect"`
+	EffectChance *int    `json:"effect_chance"`
+}
+
+type AbilityDetail struct {
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Generation  *int    `json:"generation"`
+}
+
+type AbilityPokemon struct {
+	PokemonName string `json:"pokemon_name"`
+	IsHidden    bool   `json:"is_hidden"`
+}
+
+type PokedexEntry struct {
+	GameVersion string `json:"game_version"`
+	FlavorText  string `json:"flavor_text"`
+}
+
+type Nature struct {
+	Name          string  `json:"name"`
+	IncreasedStat *string `json:"increased_stat"`
+	DecreasedStat *string `json:"decreased_stat"`
+}
+
+type LocationEncounter struct {
+	Region          string   `json:"region"`
+	RouteName       string   `json:"route_name"`
+	PokemonName     string   `json:"pokemon_name"`
+	Games           []string `json:"games"`
+	EncounterMethod *string  `json:"encounter_method"`
+	Rarity          *string  `json:"rarity"`
+	LevelRange      *string  `json:"level_range"`
+	TimeOfDay       *string  `json:"time_of_day"`
+}
+
+type Berry struct {
+	Name             string  `json:"name"`
+	NaturalGiftType  *string `json:"natural_gift_type"`
+	NaturalGiftPower *int    `json:"natural_gift_power"`
+	SizeMM           *int    `json:"size_mm"`
+	Firmness         *string `json:"firmness"`
+	Effect           *string `json:"effect"`
+	GrowthTime       *int    `json:"growth_time"`
+}
+
+type BerryFlavor struct {
+	Flavor  string `json:"flavor"`
+	Potency int    `json:"potency"`
+}
+
+type ItemLocation struct {
+	ItemName string  `json:"item_name"`
+	Game     string  `json:"game"`
+	Location string  `json:"location"`
+	Method   *string `json:"method"`
+}
+
+type TmLocation struct {
+	TmNumber string `json:"tm_number"`
+	MoveName string `json:"move_name"`
+	Game     string `json:"game"`
+	Location string `json:"location"`
+}

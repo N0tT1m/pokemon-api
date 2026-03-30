@@ -19,6 +19,8 @@ from pokemondb_scraper.items import (
     LocationEncounterItem,
     BerryItem,
     BerryFlavorItem,
+    ItemLocationItem,
+    TmLocationItem,
 )
 
 SCHEMA_SQL = """
@@ -190,6 +192,24 @@ CREATE TABLE IF NOT EXISTS berry_flavors (
     potency     INTEGER NOT NULL DEFAULT 0,
     UNIQUE(berry_name, flavor)
 );
+
+CREATE TABLE IF NOT EXISTS item_locations (
+    id         SERIAL PRIMARY KEY,
+    item_name  TEXT NOT NULL,
+    game       TEXT NOT NULL,
+    location   TEXT NOT NULL,
+    method     TEXT,
+    UNIQUE(item_name, game, location)
+);
+
+CREATE TABLE IF NOT EXISTS tm_locations (
+    id         SERIAL PRIMARY KEY,
+    tm_number  TEXT NOT NULL,
+    move_name  TEXT NOT NULL,
+    game       TEXT NOT NULL,
+    location   TEXT NOT NULL,
+    UNIQUE(tm_number, game, move_name)
+);
 """
 
 
@@ -250,6 +270,10 @@ class PostgresPipeline:
             self._upsert_berry(adapter)
         elif isinstance(item, BerryFlavorItem):
             self._upsert_berry_flavor(adapter)
+        elif isinstance(item, ItemLocationItem):
+            self._upsert_item_location(adapter)
+        elif isinstance(item, TmLocationItem):
+            self._upsert_tm_location(adapter)
 
         self.conn.commit()
         return item
@@ -426,4 +450,18 @@ class PostgresPipeline:
             VALUES (%(berry_name)s, %(flavor)s, %(potency)s)
             ON CONFLICT (berry_name, flavor) DO UPDATE SET
                 potency = EXCLUDED.potency
+        """, dict(a))
+
+    def _upsert_item_location(self, a):
+        self.cur.execute("""
+            INSERT INTO item_locations (item_name, game, location, method)
+            VALUES (%(item_name)s, %(game)s, %(location)s, %(method)s)
+            ON CONFLICT (item_name, game, location) DO NOTHING
+        """, dict(a))
+
+    def _upsert_tm_location(self, a):
+        self.cur.execute("""
+            INSERT INTO tm_locations (tm_number, move_name, game, location)
+            VALUES (%(tm_number)s, %(move_name)s, %(game)s, %(location)s)
+            ON CONFLICT (tm_number, game, move_name) DO NOTHING
         """, dict(a))

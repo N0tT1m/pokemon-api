@@ -10,6 +10,8 @@ from pokemondb_scraper.items import (
     LocationItem,
     GameNationalDexItem,
     PokedexEntryItem,
+    PokemonNameItem,
+    PokemonSpriteItem,
 )
 
 # Unicode fraction → float mapping for type defense values
@@ -305,6 +307,38 @@ class PokemonDbAllPokemon(scrapy.Spider):
                             game_version=game_name,
                             flavor_text=flavor_text,
                         )
+
+        # --- Multi-language names ---
+        for row in response.xpath('//h2[contains(text(),"Other languages")]/following-sibling::table[1]//tbody/tr'):
+            language = row.xpath('./th/text()').get('').strip()
+            localized = row.xpath('./td[1]/text()').get('').strip()
+            if language and localized:
+                yield PokemonNameItem(
+                    pokemon_name=pokemon_name,
+                    language=language,
+                    localized_name=localized,
+                )
+
+        # --- Sprites ---
+        for sprite_section in response.xpath('//h2[contains(text(),"Sprites")]/following-sibling::*'):
+            tag = sprite_section.xpath('name()').get('')
+            if tag == 'h2':
+                break  # Next section
+            # Look for generation headers and sprite images
+            gen_name = sprite_section.xpath('.//h3/text()').get('')
+            for img in sprite_section.xpath('.//img/@src').getall():
+                if 'sprites' in img or 'artwork' in img:
+                    sprite_type = 'normal'
+                    if 'shiny' in img.lower():
+                        sprite_type = 'shiny'
+                    elif 'female' in img.lower():
+                        sprite_type = 'female'
+                    yield PokemonSpriteItem(
+                        pokemon_name=pokemon_name,
+                        sprite_type=sprite_type,
+                        generation=gen_name.strip() if gen_name else None,
+                        url=img,
+                    )
 
         # --- Game national dex (from "Local №" row) ---
         # Each text node in the Local № td looks like "0025 (Red/Blue/Yellow)"

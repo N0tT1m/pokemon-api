@@ -234,3 +234,347 @@ func GetAllPokemon(ctx context.Context, limit, offset int) ([]models.PokemonList
 	}
 	return entries, total, nil
 }
+
+// --- Item queries ---
+
+func GetAllItems(ctx context.Context, limit, offset int) ([]models.ItemDetail, int, error) {
+	var total int
+	err := Pool.QueryRow(ctx, `SELECT COUNT(*) FROM item_details`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := Pool.Query(ctx, `
+		SELECT name, category, effect, sprite_url FROM item_details ORDER BY name LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var items []models.ItemDetail
+	for rows.Next() {
+		var i models.ItemDetail
+		if err := rows.Scan(&i.Name, &i.Category, &i.Effect, &i.SpriteURL); err != nil {
+			return nil, 0, err
+		}
+		items = append(items, i)
+	}
+	return items, total, nil
+}
+
+func GetItemByName(ctx context.Context, name string) (*models.ItemDetail, error) {
+	i := &models.ItemDetail{}
+	err := Pool.QueryRow(ctx, `
+		SELECT name, category, effect, sprite_url FROM item_details WHERE LOWER(name) = LOWER($1)
+	`, name).Scan(&i.Name, &i.Category, &i.Effect, &i.SpriteURL)
+	if err != nil {
+		return nil, err
+	}
+	return i, nil
+}
+
+// --- Move queries ---
+
+func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDetail, int, error) {
+	var total int
+	err := Pool.QueryRow(ctx, `SELECT COUNT(*) FROM move_details`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := Pool.Query(ctx, `
+		SELECT name, type, category, power, accuracy, pp, effect, effect_chance
+		FROM move_details ORDER BY name LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var moves []models.MoveDetail
+	for rows.Next() {
+		var m models.MoveDetail
+		if err := rows.Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance); err != nil {
+			return nil, 0, err
+		}
+		moves = append(moves, m)
+	}
+	return moves, total, nil
+}
+
+func GetMoveDetailByName(ctx context.Context, name string) (*models.MoveDetail, error) {
+	m := &models.MoveDetail{}
+	err := Pool.QueryRow(ctx, `
+		SELECT name, type, category, power, accuracy, pp, effect, effect_chance
+		FROM move_details WHERE LOWER(name) = LOWER($1)
+	`, name).Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// GetPokemonByMove returns Pokemon names that learn a given move
+func GetPokemonByMove(ctx context.Context, moveName string) ([]map[string]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT pokemon_name, learn_method FROM moves
+		WHERE LOWER(move_name) = LOWER($1)
+		ORDER BY pokemon_name
+	`, moveName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var results []map[string]string
+	for rows.Next() {
+		var pname, method string
+		if err := rows.Scan(&pname, &method); err != nil {
+			return nil, err
+		}
+		results = append(results, map[string]string{"pokemon_name": pname, "learn_method": method})
+	}
+	return results, nil
+}
+
+// --- Ability queries ---
+
+func GetAllAbilities(ctx context.Context, limit, offset int) ([]models.AbilityDetail, int, error) {
+	var total int
+	err := Pool.QueryRow(ctx, `SELECT COUNT(*) FROM ability_details`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+	rows, err := Pool.Query(ctx, `
+		SELECT name, description, generation FROM ability_details ORDER BY name LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var abilities []models.AbilityDetail
+	for rows.Next() {
+		var a models.AbilityDetail
+		if err := rows.Scan(&a.Name, &a.Description, &a.Generation); err != nil {
+			return nil, 0, err
+		}
+		abilities = append(abilities, a)
+	}
+	return abilities, total, nil
+}
+
+func GetAbilityByName(ctx context.Context, name string) (*models.AbilityDetail, error) {
+	a := &models.AbilityDetail{}
+	err := Pool.QueryRow(ctx, `
+		SELECT name, description, generation FROM ability_details WHERE LOWER(name) = LOWER($1)
+	`, name).Scan(&a.Name, &a.Description, &a.Generation)
+	if err != nil {
+		return nil, err
+	}
+	return a, nil
+}
+
+func GetAbilityPokemon(ctx context.Context, abilityName string) ([]models.AbilityPokemon, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, is_hidden FROM ability_pokemon WHERE LOWER(ability_name) = LOWER($1) ORDER BY pokemon_name
+	`, abilityName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var pokemon []models.AbilityPokemon
+	for rows.Next() {
+		var p models.AbilityPokemon
+		if err := rows.Scan(&p.PokemonName, &p.IsHidden); err != nil {
+			return nil, err
+		}
+		pokemon = append(pokemon, p)
+	}
+	return pokemon, nil
+}
+
+// --- Pokedex entries (flavor text) ---
+
+func GetPokedexEntries(ctx context.Context, pokemonName string) ([]models.PokedexEntry, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT game_version, flavor_text FROM pokedex_entries WHERE pokemon_name = $1 ORDER BY game_version
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []models.PokedexEntry
+	for rows.Next() {
+		var e models.PokedexEntry
+		if err := rows.Scan(&e.GameVersion, &e.FlavorText); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+// --- Natures ---
+
+func GetAllNatures(ctx context.Context) ([]models.Nature, error) {
+	rows, err := Pool.Query(ctx, `SELECT name, increased_stat, decreased_stat FROM natures ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var natures []models.Nature
+	for rows.Next() {
+		var n models.Nature
+		if err := rows.Scan(&n.Name, &n.IncreasedStat, &n.DecreasedStat); err != nil {
+			return nil, err
+		}
+		natures = append(natures, n)
+	}
+	return natures, nil
+}
+
+// --- Location encounters ---
+
+func GetLocationEncounters(ctx context.Context, region, routeName string) ([]models.LocationEncounter, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day
+		FROM location_encounters WHERE LOWER(region) = LOWER($1) AND LOWER(route_name) = LOWER($2)
+		ORDER BY pokemon_name
+	`, region, routeName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var encounters []models.LocationEncounter
+	for rows.Next() {
+		var e models.LocationEncounter
+		if err := rows.Scan(&e.Region, &e.RouteName, &e.PokemonName, &e.Games, &e.EncounterMethod, &e.Rarity, &e.LevelRange, &e.TimeOfDay); err != nil {
+			return nil, err
+		}
+		encounters = append(encounters, e)
+	}
+	return encounters, nil
+}
+
+func GetAllRegions(ctx context.Context) ([]string, error) {
+	rows, err := Pool.Query(ctx, `SELECT DISTINCT region FROM location_encounters ORDER BY region`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var regions []string
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			return nil, err
+		}
+		regions = append(regions, r)
+	}
+	return regions, nil
+}
+
+func GetRoutesByRegion(ctx context.Context, region string) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT route_name FROM location_encounters WHERE LOWER(region) = LOWER($1) ORDER BY route_name
+	`, region)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var routes []string
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			return nil, err
+		}
+		routes = append(routes, r)
+	}
+	return routes, nil
+}
+
+// --- Berry queries ---
+
+func GetAllBerries(ctx context.Context) ([]models.Berry, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT name, natural_gift_type, natural_gift_power, size_mm, firmness, effect, growth_time
+		FROM berries ORDER BY name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var berries []models.Berry
+	for rows.Next() {
+		var b models.Berry
+		if err := rows.Scan(&b.Name, &b.NaturalGiftType, &b.NaturalGiftPower, &b.SizeMM, &b.Firmness, &b.Effect, &b.GrowthTime); err != nil {
+			return nil, err
+		}
+		berries = append(berries, b)
+	}
+	return berries, nil
+}
+
+func GetBerryByName(ctx context.Context, name string) (*models.Berry, error) {
+	b := &models.Berry{}
+	err := Pool.QueryRow(ctx, `
+		SELECT name, natural_gift_type, natural_gift_power, size_mm, firmness, effect, growth_time
+		FROM berries WHERE LOWER(name) = LOWER($1)
+	`, name).Scan(&b.Name, &b.NaturalGiftType, &b.NaturalGiftPower, &b.SizeMM, &b.Firmness, &b.Effect, &b.GrowthTime)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+func GetBerryFlavors(ctx context.Context, berryName string) ([]models.BerryFlavor, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT flavor, potency FROM berry_flavors WHERE LOWER(berry_name) = LOWER($1) ORDER BY flavor
+	`, berryName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var flavors []models.BerryFlavor
+	for rows.Next() {
+		var f models.BerryFlavor
+		if err := rows.Scan(&f.Flavor, &f.Potency); err != nil {
+			return nil, err
+		}
+		flavors = append(flavors, f)
+	}
+	return flavors, nil
+}
+
+func GetPokemonNames(ctx context.Context, pokemonName string) ([]models.PokemonName, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT language, localized_name FROM pokemon_names WHERE pokemon_name = $1 ORDER BY language
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []models.PokemonName
+	for rows.Next() {
+		var n models.PokemonName
+		if err := rows.Scan(&n.Language, &n.LocalizedName); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, nil
+}
+
+func GetPokemonSprites(ctx context.Context, pokemonName string) ([]models.PokemonSprite, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT sprite_type, generation, url FROM pokemon_sprites WHERE pokemon_name = $1 ORDER BY generation, sprite_type
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var sprites []models.PokemonSprite
+	for rows.Next() {
+		var s models.PokemonSprite
+		if err := rows.Scan(&s.SpriteType, &s.Generation, &s.URL); err != nil {
+			return nil, err
+		}
+		sprites = append(sprites, s)
+	}
+	return sprites, nil
+}

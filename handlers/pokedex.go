@@ -80,6 +80,14 @@ func GetVersionGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Fallback: if no game-specific dex data, offer the national dex from the pokemon table
+	if len(pokedexes) == 0 {
+		pokedexes = append(pokedexes, map[string]any{
+			"name": "national",
+			"url":  "/api/v2/pokedex/1/",
+		})
+	}
+
 	writeJSON(w, 200, map[string]any{
 		"name":      slug,
 		"pokedexes": pokedexes,

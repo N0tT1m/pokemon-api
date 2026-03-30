@@ -140,3 +140,26 @@ class BerryFlavorItem(scrapy.Item):
     berry_name = scrapy.Field()
     flavor = scrapy.Field()
     potency = scrapy.Field()
+
+class ItemLocationItem(scrapy.Item):
+    item_name = scrapy.Field()
+    game = scrapy.Field()
+    location = scrapy.Field()
+    method = scrapy.Field()
+
+class TmLocationItem(scrapy.Item):
+    tm_number = scrapy.Field()
+    move_name = scrapy.Field()
+    game = scrapy.Field()
+    location = scrapy.Field()
+
+class PokemonNameItem(scrapy.Item):
+    pokemon_name = scrapy.Field()
+    language = scrapy.Field()
+    localized_name = scrapy.Field()
+
+class PokemonSpriteItem(scrapy.Item):
+    pokemon_name = scrapy.Field()
+    sprite_type = scrapy.Field()
+    generation = scrapy.Field()
+    url = scrapy.Field()

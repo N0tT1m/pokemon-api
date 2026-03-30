@@ -205,12 +205,7 @@ func GetPokemonSpecies(w http.ResponseWriter, r *http.Request) {
 		"gender_rate":   genderRate,
 		"hatch_counter": parseIntOrNil(deref(p.EggCycles)),
 		"egg_groups":    formatEggGroups(p.EggGroups),
-		"flavor_text_entries": []map[string]any{
-			{
-				"flavor_text": "", // we don't have flavor text in our DB
-				"language":    map[string]string{"name": "en"},
-			},
-		},
+		"flavor_text_entries": buildFlavorTextEntries(r, p.Name),
 		"evolution_chain": buildEvolutionChainRef(evos, id),
 	}
 
@@ -403,6 +398,24 @@ func formatEggGroups(groups []string) []map[string]any {
 	return result
 }
 
+func buildFlavorTextEntries(r *http.Request, pokemonName string) []map[string]any {
+	entries, _ := db.GetPokedexEntries(r.Context(), pokemonName)
+	if len(entries) == 0 {
+		return []map[string]any{
+			{"flavor_text": "", "language": map[string]string{"name": "en"}},
+		}
+	}
+	result := make([]map[string]any, len(entries))
+	for i, e := range entries {
+		result[i] = map[string]any{
+			"flavor_text": e.FlavorText,
+			"version":     map[string]string{"name": e.GameVersion},
+			"language":    map[string]string{"name": "en"},
+		}
+	}
+	return result
+}
+
 func buildEvolutionChainRef(evos []models.Evolution, pokemonID int) map[string]any {
 	return map[string]any{
 		"url": "/api/v2/evolution-chain/" + strconv.Itoa(pokemonID) + "/",
@@ -496,8 +509,11 @@ func buildEvolutionTree(evos []models.Evolution) map[string]any {
 }
 
 // parseHeightToDecimeters parses height text like "0.2 m (0'08\")" to decimeters (int).
+// Note: pokemondb uses \u00a0 (non-breaking space) between number and unit.
 func parseHeightToDecimeters(s string) int {
-	re := regexp.MustCompile(`([\d.]+)\s*m`)
+	// Replace non-breaking spaces with regular spaces first
+	s = strings.ReplaceAll(s, "\u00a0", " ")
+	re := regexp.MustCompile(`([\d.]+)\s*m\b`)
 	matches := re.FindStringSubmatch(s)
 	if len(matches) < 2 {
 		return 0
@@ -511,6 +527,7 @@ func parseHeightToDecimeters(s string) int {
 
 // parseWeightToHectograms parses weight text like "0.5 kg (1.1 lbs)" to hectograms (int).
 func parseWeightToHectograms(s string) int {
+	s = strings.ReplaceAll(s, "\u00a0", " ")
 	re := regexp.MustCompile(`([\d.]+)\s*kg`)
 	matches := re.FindStringSubmatch(s)
 	if len(matches) < 2 {

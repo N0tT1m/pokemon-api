@@ -42,6 +42,25 @@ func main() {
 	r.Get("/api/v2/pokedex/game/{game}", handlers.GetGamePokedex)
 	r.Get("/api/v2/games", handlers.ListGames)
 
+	// Reference database endpoints
+	r.Get("/api/v2/item", handlers.ListItems)
+	r.Get("/api/v2/item/{identifier}", handlers.GetItem)
+	r.Get("/api/v2/move", handlers.ListMoves)
+	r.Get("/api/v2/move/{identifier}", handlers.GetMove)
+	r.Get("/api/v2/ability", handlers.ListAbilities)
+	r.Get("/api/v2/ability/{identifier}", handlers.GetAbility)
+	r.Get("/api/v2/nature", handlers.ListNatures)
+	r.Get("/api/v2/berry", handlers.ListBerries)
+	r.Get("/api/v2/berry/{identifier}", handlers.GetBerry)
+	r.Get("/api/v2/pokemon/{identifier}/flavor-text", handlers.GetPokemonFlavorText)
+	r.Get("/api/v2/pokemon/{identifier}/names", handlers.GetPokemonNames)
+	r.Get("/api/v2/pokemon/{identifier}/sprites-all", handlers.GetPokemonSprites)
+
+	// Location encounter endpoints
+	r.Get("/api/v2/location/regions", handlers.ListRegions)
+	r.Get("/api/v2/location/region/{region}/routes", handlers.ListRoutes)
+	r.Get("/api/v2/location/region/{region}/route/{route}", handlers.GetRouteEncounters)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "158"
