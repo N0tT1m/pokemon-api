@@ -79,3 +79,64 @@ class GameNationalDexItem(scrapy.Item):
     game = scrapy.Field()            # e.g. "Brilliant Diamond/Shining Pearl"
     pokemon_name = scrapy.Field()
     national_no = scrapy.Field()     # int — the universal national dex number
+
+
+class GameItemDetail(scrapy.Item):
+    name = scrapy.Field()
+    category = scrapy.Field()
+    effect = scrapy.Field()
+    sprite_url = scrapy.Field()
+
+class MoveDetail(scrapy.Item):
+    name = scrapy.Field()
+    type = scrapy.Field()
+    category = scrapy.Field()
+    power = scrapy.Field()
+    accuracy = scrapy.Field()
+    pp = scrapy.Field()
+    effect = scrapy.Field()
+    effect_chance = scrapy.Field()
+
+class AbilityDetail(scrapy.Item):
+    name = scrapy.Field()
+    description = scrapy.Field()
+    generation = scrapy.Field()
+
+class AbilityPokemonItem(scrapy.Item):
+    ability_name = scrapy.Field()
+    pokemon_name = scrapy.Field()
+    is_hidden = scrapy.Field()
+
+class PokedexEntryItem(scrapy.Item):
+    pokemon_name = scrapy.Field()
+    game_version = scrapy.Field()
+    flavor_text = scrapy.Field()
+
+class NatureItem(scrapy.Item):
+    name = scrapy.Field()
+    increased_stat = scrapy.Field()
+    decreased_stat = scrapy.Field()
+
+class LocationEncounterItem(scrapy.Item):
+    region = scrapy.Field()
+    route_name = scrapy.Field()
+    pokemon_name = scrapy.Field()
+    games = scrapy.Field()
+    encounter_method = scrapy.Field()
+    rarity = scrapy.Field()
+    level_range = scrapy.Field()
+    time_of_day = scrapy.Field()
+
+class BerryItem(scrapy.Item):
+    name = scrapy.Field()
+    natural_gift_type = scrapy.Field()
+    natural_gift_power = scrapy.Field()
+    size_mm = scrapy.Field()
+    firmness = scrapy.Field()
+    effect = scrapy.Field()
+    growth_time = scrapy.Field()
+
+class BerryFlavorItem(scrapy.Item):
+    berry_name = scrapy.Field()
+    flavor = scrapy.Field()
+    potency = scrapy.Field()

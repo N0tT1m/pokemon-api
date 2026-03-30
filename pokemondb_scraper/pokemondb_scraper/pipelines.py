@@ -10,6 +10,15 @@ from pokemondb_scraper.items import (
     LocationItem,
     RegionalDexItem,
     GameNationalDexItem,
+    GameItemDetail,
+    MoveDetail,
+    AbilityDetail,
+    AbilityPokemonItem,
+    PokedexEntryItem,
+    NatureItem,
+    LocationEncounterItem,
+    BerryItem,
+    BerryFlavorItem,
 )
 
 SCHEMA_SQL = """
@@ -98,6 +107,89 @@ CREATE TABLE IF NOT EXISTS game_national_dex (
     national_no  INTEGER NOT NULL,
     UNIQUE(game, pokemon_name)
 );
+
+CREATE TABLE IF NOT EXISTS item_details (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    category    TEXT,
+    effect      TEXT,
+    sprite_url  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS move_details (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    type        TEXT,
+    category    TEXT,
+    power       INTEGER,
+    accuracy    INTEGER,
+    pp          INTEGER,
+    effect      TEXT,
+    effect_chance INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS ability_details (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT,
+    generation  INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS ability_pokemon (
+    id            SERIAL PRIMARY KEY,
+    ability_name  TEXT NOT NULL REFERENCES ability_details(name) ON DELETE CASCADE,
+    pokemon_name  TEXT NOT NULL,
+    is_hidden     BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE(ability_name, pokemon_name)
+);
+
+CREATE TABLE IF NOT EXISTS pokedex_entries (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL REFERENCES pokemon(name) ON DELETE CASCADE,
+    game_version TEXT NOT NULL,
+    flavor_text  TEXT NOT NULL,
+    UNIQUE(pokemon_name, game_version)
+);
+
+CREATE TABLE IF NOT EXISTS natures (
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL UNIQUE,
+    increased_stat  TEXT,
+    decreased_stat  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS location_encounters (
+    id               SERIAL PRIMARY KEY,
+    region           TEXT NOT NULL,
+    route_name       TEXT NOT NULL,
+    pokemon_name     TEXT NOT NULL,
+    games            TEXT[],
+    encounter_method TEXT,
+    rarity           TEXT,
+    level_range      TEXT,
+    time_of_day      TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS location_encounters_unique ON location_encounters (region, route_name, pokemon_name, COALESCE(encounter_method, ''), COALESCE(games::text, ''));
+
+CREATE TABLE IF NOT EXISTS berries (
+    id                SERIAL PRIMARY KEY,
+    name              TEXT NOT NULL UNIQUE,
+    natural_gift_type TEXT,
+    natural_gift_power INTEGER,
+    size_mm           INTEGER,
+    firmness          TEXT,
+    effect            TEXT,
+    growth_time       INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS berry_flavors (
+    id          SERIAL PRIMARY KEY,
+    berry_name  TEXT NOT NULL REFERENCES berries(name) ON DELETE CASCADE,
+    flavor      TEXT NOT NULL,
+    potency     INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(berry_name, flavor)
+);
 """
 
 
@@ -140,6 +232,24 @@ class PostgresPipeline:
             self._upsert_regional_dex(adapter)
         elif isinstance(item, GameNationalDexItem):
             self._upsert_game_national_dex(adapter)
+        elif isinstance(item, GameItemDetail):
+            self._upsert_item_detail(adapter)
+        elif isinstance(item, MoveDetail):
+            self._upsert_move_detail(adapter)
+        elif isinstance(item, AbilityDetail):
+            self._upsert_ability_detail(adapter)
+        elif isinstance(item, AbilityPokemonItem):
+            self._upsert_ability_pokemon(adapter)
+        elif isinstance(item, PokedexEntryItem):
+            self._upsert_pokedex_entry(adapter)
+        elif isinstance(item, NatureItem):
+            self._upsert_nature(adapter)
+        elif isinstance(item, LocationEncounterItem):
+            self._upsert_location_encounter(adapter)
+        elif isinstance(item, BerryItem):
+            self._upsert_berry(adapter)
+        elif isinstance(item, BerryFlavorItem):
+            self._upsert_berry_flavor(adapter)
 
         self.conn.commit()
         return item
@@ -226,4 +336,93 @@ class PostgresPipeline:
             VALUES (%(game)s, %(pokemon_name)s, %(national_no)s)
             ON CONFLICT (game, pokemon_name) DO UPDATE SET
                 national_no = EXCLUDED.national_no
+        """, dict(a))
+
+    def _upsert_item_detail(self, a):
+        self.cur.execute("""
+            INSERT INTO item_details (name, category, effect, sprite_url)
+            VALUES (%(name)s, %(category)s, %(effect)s, %(sprite_url)s)
+            ON CONFLICT (name) DO UPDATE SET
+                category = EXCLUDED.category,
+                effect = EXCLUDED.effect,
+                sprite_url = EXCLUDED.sprite_url
+        """, dict(a))
+
+    def _upsert_move_detail(self, a):
+        self.cur.execute("""
+            INSERT INTO move_details (name, type, category, power, accuracy, pp, effect, effect_chance)
+            VALUES (%(name)s, %(type)s, %(category)s, %(power)s, %(accuracy)s, %(pp)s, %(effect)s, %(effect_chance)s)
+            ON CONFLICT (name) DO UPDATE SET
+                type = EXCLUDED.type,
+                category = EXCLUDED.category,
+                power = EXCLUDED.power,
+                accuracy = EXCLUDED.accuracy,
+                pp = EXCLUDED.pp,
+                effect = EXCLUDED.effect,
+                effect_chance = EXCLUDED.effect_chance
+        """, dict(a))
+
+    def _upsert_ability_detail(self, a):
+        self.cur.execute("""
+            INSERT INTO ability_details (name, description, generation)
+            VALUES (%(name)s, %(description)s, %(generation)s)
+            ON CONFLICT (name) DO UPDATE SET
+                description = EXCLUDED.description,
+                generation = EXCLUDED.generation
+        """, dict(a))
+
+    def _upsert_ability_pokemon(self, a):
+        self.cur.execute("""
+            INSERT INTO ability_pokemon (ability_name, pokemon_name, is_hidden)
+            VALUES (%(ability_name)s, %(pokemon_name)s, %(is_hidden)s)
+            ON CONFLICT (ability_name, pokemon_name) DO UPDATE SET
+                is_hidden = EXCLUDED.is_hidden
+        """, dict(a))
+
+    def _upsert_pokedex_entry(self, a):
+        self.cur.execute("""
+            INSERT INTO pokedex_entries (pokemon_name, game_version, flavor_text)
+            VALUES (%(pokemon_name)s, %(game_version)s, %(flavor_text)s)
+            ON CONFLICT (pokemon_name, game_version) DO UPDATE SET
+                flavor_text = EXCLUDED.flavor_text
+        """, dict(a))
+
+    def _upsert_nature(self, a):
+        self.cur.execute("""
+            INSERT INTO natures (name, increased_stat, decreased_stat)
+            VALUES (%(name)s, %(increased_stat)s, %(decreased_stat)s)
+            ON CONFLICT (name) DO UPDATE SET
+                increased_stat = EXCLUDED.increased_stat,
+                decreased_stat = EXCLUDED.decreased_stat
+        """, dict(a))
+
+    def _upsert_location_encounter(self, a):
+        self.cur.execute("""
+            INSERT INTO location_encounters (region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day)
+            VALUES (%(region)s, %(route_name)s, %(pokemon_name)s, %(games)s, %(encounter_method)s, %(rarity)s, %(level_range)s, %(time_of_day)s)
+            ON CONFLICT (region, route_name, pokemon_name, COALESCE(encounter_method, ''), COALESCE(games::text, '')) DO UPDATE SET
+                rarity = EXCLUDED.rarity,
+                level_range = EXCLUDED.level_range,
+                time_of_day = EXCLUDED.time_of_day
+        """, dict(a))
+
+    def _upsert_berry(self, a):
+        self.cur.execute("""
+            INSERT INTO berries (name, natural_gift_type, natural_gift_power, size_mm, firmness, effect, growth_time)
+            VALUES (%(name)s, %(natural_gift_type)s, %(natural_gift_power)s, %(size_mm)s, %(firmness)s, %(effect)s, %(growth_time)s)
+            ON CONFLICT (name) DO UPDATE SET
+                natural_gift_type = EXCLUDED.natural_gift_type,
+                natural_gift_power = EXCLUDED.natural_gift_power,
+                size_mm = EXCLUDED.size_mm,
+                firmness = EXCLUDED.firmness,
+                effect = EXCLUDED.effect,
+                growth_time = EXCLUDED.growth_time
+        """, dict(a))
+
+    def _upsert_berry_flavor(self, a):
+        self.cur.execute("""
+            INSERT INTO berry_flavors (berry_name, flavor, potency)
+            VALUES (%(berry_name)s, %(flavor)s, %(potency)s)
+            ON CONFLICT (berry_name, flavor) DO UPDATE SET
+                potency = EXCLUDED.potency
         """, dict(a))

@@ -9,6 +9,7 @@ from pokemondb_scraper.items import (
     MoveItem,
     LocationItem,
     GameNationalDexItem,
+    PokedexEntryItem,
 )
 
 # Unicode fraction → float mapping for type defense values
@@ -260,6 +261,50 @@ class PokemonDbAllPokemon(scrapy.Spider):
                 power=parse_int(row.xpath('./td[5]/text()').get('')),
                 accuracy=parse_int(row.xpath('./td[6]/text()').get('')),
             )
+
+        # --- Moves: Egg moves ---
+        for row in response.xpath(
+            '//h3[contains(text(),"Egg moves")]/following-sibling::table[1]//tbody/tr'
+        ):
+            yield MoveItem(
+                pokemon_name=pokemon_name,
+                learn_method='egg',
+                level_or_tm='—',
+                move_name=row.xpath('./td[1]//a[@class="ent-name"]/text()').get('').strip(),
+                type=row.xpath('./td[2]//a/text()').get('').strip(),
+                category=row.xpath('./td[3]//img/@alt').get('').strip(),
+                power=parse_int(row.xpath('./td[4]/text()').get('')),
+                accuracy=parse_int(row.xpath('./td[5]/text()').get('')),
+            )
+
+        # --- Moves: Move Tutor ---
+        for row in response.xpath(
+            '//h3[contains(text(),"Move Tutor moves")]/following-sibling::table[1]//tbody/tr'
+        ):
+            yield MoveItem(
+                pokemon_name=pokemon_name,
+                learn_method='tutor',
+                level_or_tm='—',
+                move_name=row.xpath('./td[1]//a[@class="ent-name"]/text()').get('').strip(),
+                type=row.xpath('./td[2]//a/text()').get('').strip(),
+                category=row.xpath('./td[3]//img/@alt').get('').strip(),
+                power=parse_int(row.xpath('./td[4]/text()').get('')),
+                accuracy=parse_int(row.xpath('./td[5]/text()').get('')),
+            )
+
+        # --- Pokedex entries (flavor text) ---
+        for row in response.xpath('//h2[contains(text(),"Pok")][contains(text(),"dex entries")]/following-sibling::table[1]//tbody/tr'):
+            game_names = row.xpath('./th//text()').getall()
+            flavor_text = ' '.join(row.xpath('./td//text()').getall()).strip()
+            if game_names and flavor_text:
+                for game_name in game_names:
+                    game_name = game_name.strip()
+                    if game_name:
+                        yield PokedexEntryItem(
+                            pokemon_name=pokemon_name,
+                            game_version=game_name,
+                            flavor_text=flavor_text,
+                        )
 
         # --- Game national dex (from "Local №" row) ---
         # Each text node in the Local № td looks like "0025 (Red/Blue/Yellow)"
