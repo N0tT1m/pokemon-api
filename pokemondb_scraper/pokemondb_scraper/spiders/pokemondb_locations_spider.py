@@ -87,9 +87,13 @@ class PokemonDbLocationsSpider(scrapy.Spider):
                         if not pokemon_name:
                             continue
 
-                        # Games: non-blank game cells
+                        # Games: non-blank game cells only
                         games = row.css('td.cell-loc-game:not(.cell-loc-game-blank)::text').getall()
                         games = [g.strip() for g in games if g.strip()]
+
+                        # Skip rows where all game cells are blank
+                        if not games:
+                            continue
 
                         # Rarity: try percentage badge first, then icon alt text
                         rarity = row.css('span.icon-rarity::text').get('')

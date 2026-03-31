@@ -450,10 +450,12 @@ class PostgresPipeline:
             INSERT INTO location_encounters (region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day)
             VALUES (%(region)s, %(route_name)s, %(pokemon_name)s, %(games)s, %(encounter_method)s, %(rarity)s, %(level_range)s, %(time_of_day)s)
             ON CONFLICT (region, route_name, pokemon_name, COALESCE(encounter_method, '')) DO UPDATE SET
-                games = EXCLUDED.games,
-                rarity = EXCLUDED.rarity,
-                level_range = EXCLUDED.level_range,
-                time_of_day = EXCLUDED.time_of_day
+                games = (
+                    SELECT ARRAY(SELECT DISTINCT unnest FROM unnest(location_encounters.games || EXCLUDED.games) ORDER BY 1)
+                ),
+                rarity = COALESCE(EXCLUDED.rarity, location_encounters.rarity),
+                level_range = COALESCE(EXCLUDED.level_range, location_encounters.level_range),
+                time_of_day = COALESCE(EXCLUDED.time_of_day, location_encounters.time_of_day)
         """, dict(a))
 
     def _upsert_berry(self, a):
