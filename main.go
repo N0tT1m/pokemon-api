@@ -56,6 +56,17 @@ func main() {
 	r.Get("/api/v2/pokemon/{identifier}/flavor-text", handlers.GetPokemonFlavorText)
 	r.Get("/api/v2/pokemon/{identifier}/names", handlers.GetPokemonNames)
 	r.Get("/api/v2/pokemon/{identifier}/sprites-all", handlers.GetPokemonSprites)
+	r.Get("/api/v2/pokemon/{identifier}/held-items", handlers.GetPokemonHeldItems)
+	r.Get("/api/v2/pokemon/{identifier}/biology", handlers.GetPokemonBiologyHandler)
+	r.Get("/api/v2/pokemon/{identifier}/game-locations", handlers.GetPokemonGameLocationsHandler)
+
+	// TM location endpoints
+	r.Get("/api/v2/tm", handlers.ListTmLocations)
+	r.Get("/api/v2/tm/games", handlers.ListTmGames)
+
+	// Item location browse endpoints
+	r.Get("/api/v2/item-locations", handlers.ListItemLocationsByGame)
+	r.Get("/api/v2/item-locations/games", handlers.ListItemLocationGames)
 
 	// Location encounter endpoints
 	r.Get("/api/v2/location/regions", handlers.ListRegions)

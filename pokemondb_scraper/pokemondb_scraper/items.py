@@ -173,3 +173,10 @@ class WildHeldItemItem(scrapy.Item):
 class PokemonBiologyItem(scrapy.Item):
     pokemon_name = scrapy.Field()
     biology = scrapy.Field()
+
+class PokemonGameLocationItem(scrapy.Item):
+    """How/where to find a Pokemon in each game, including special methods."""
+    pokemon_name = scrapy.Field()   # e.g. "Spiritomb"
+    game         = scrapy.Field()   # e.g. "Diamond/Pearl"
+    location     = scrapy.Field()   # e.g. "Hallowed Tower (32 underground encounters)"
+    method       = scrapy.Field()   # e.g. "Special", "Wild", "Gift", "Fossil", "Trade", "Event"

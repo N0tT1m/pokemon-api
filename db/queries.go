@@ -620,3 +620,164 @@ func GetPokemonSprites(ctx context.Context, pokemonName string) ([]models.Pokemo
 	}
 	return sprites, nil
 }
+
+// --- TM location queries ---
+
+func GetTmLocations(ctx context.Context, game string) ([]models.TmLocation, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT tm_number, move_name, game, location FROM tm_locations WHERE game = $1 ORDER BY tm_number
+	`, game)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var locs []models.TmLocation
+	for rows.Next() {
+		var l models.TmLocation
+		if err := rows.Scan(&l.TmNumber, &l.MoveName, &l.Game, &l.Location); err != nil {
+			return nil, err
+		}
+		locs = append(locs, l)
+	}
+	return locs, nil
+}
+
+func GetAllTmGames(ctx context.Context) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT game FROM tm_locations ORDER BY game
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var games []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		games = append(games, g)
+	}
+	return games, nil
+}
+
+// GetItemLocationsByGame returns all item locations for a given game.
+func GetItemLocationsByGame(ctx context.Context, game string) ([]models.ItemLocation, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT item_name, game, location, method FROM item_locations WHERE game = $1 ORDER BY item_name
+	`, game)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var locations []models.ItemLocation
+	for rows.Next() {
+		var l models.ItemLocation
+		if err := rows.Scan(&l.ItemName, &l.Game, &l.Location, &l.Method); err != nil {
+			return nil, err
+		}
+		locations = append(locations, l)
+	}
+	return locations, nil
+}
+
+// GetAllItemLocationGames returns all distinct games that have item location data.
+func GetAllItemLocationGames(ctx context.Context) ([]string, error) {
+	rows, err := Pool.Query(ctx, `SELECT DISTINCT game FROM item_locations ORDER BY game`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var games []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		games = append(games, g)
+	}
+	return games, nil
+}
+
+// --- Wild held item queries ---
+
+// GetWildHeldItemsByPokemon returns all items that a given Pokemon can hold in the wild.
+func GetWildHeldItemsByPokemon(ctx context.Context, pokemonName string) ([]models.WildHeldItem, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, game, item_name, rarity
+		FROM wild_held_items WHERE LOWER(pokemon_name) = LOWER($1)
+		ORDER BY game, item_name
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []models.WildHeldItem
+	for rows.Next() {
+		var w models.WildHeldItem
+		if err := rows.Scan(&w.PokemonName, &w.Game, &w.ItemName, &w.Rarity); err != nil {
+			return nil, err
+		}
+		items = append(items, w)
+	}
+	return items, nil
+}
+
+// GetWildHeldItemsByItem returns all Pokemon that hold a given item in the wild.
+func GetWildHeldItemsByItem(ctx context.Context, itemName string) ([]models.WildHeldItem, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, game, item_name, rarity
+		FROM wild_held_items WHERE LOWER(item_name) = LOWER($1)
+		ORDER BY pokemon_name, game
+	`, itemName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []models.WildHeldItem
+	for rows.Next() {
+		var w models.WildHeldItem
+		if err := rows.Scan(&w.PokemonName, &w.Game, &w.ItemName, &w.Rarity); err != nil {
+			return nil, err
+		}
+		items = append(items, w)
+	}
+	return items, nil
+}
+
+// --- Pokemon game location queries ---
+
+func GetPokemonGameLocations(ctx context.Context, pokemonName string) ([]models.PokemonGameLocation, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, game, location, method
+		FROM pokemon_game_locations
+		WHERE LOWER(pokemon_name) = LOWER($1)
+		ORDER BY game, location
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var locs []models.PokemonGameLocation
+	for rows.Next() {
+		var l models.PokemonGameLocation
+		if err := rows.Scan(&l.PokemonName, &l.Game, &l.Location, &l.Method); err != nil {
+			return nil, err
+		}
+		locs = append(locs, l)
+	}
+	return locs, nil
+}
+
+// --- Pokemon biology queries ---
+
+func GetPokemonBiologyText(ctx context.Context, pokemonName string) (*models.PokemonBiology, error) {
+	b := &models.PokemonBiology{}
+	err := Pool.QueryRow(ctx, `
+		SELECT pokemon_name, biology FROM pokemon_biology WHERE LOWER(pokemon_name) = LOWER($1)
+	`, pokemonName).Scan(&b.PokemonName, &b.Biology)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}

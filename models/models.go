@@ -175,3 +175,10 @@ type PokemonSprite struct {
 	Generation string `json:"generation"`
 	URL        string `json:"url"`
 }
+
+type PokemonGameLocation struct {
+	PokemonName string  `json:"pokemon_name"`
+	Game        string  `json:"game"`
+	Location    string  `json:"location"`
+	Method      *string `json:"method"`
+}

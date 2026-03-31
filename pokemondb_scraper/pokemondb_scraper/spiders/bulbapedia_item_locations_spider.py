@@ -2,30 +2,73 @@ import re
 import scrapy
 from pokemondb_scraper.items import ItemLocationItem
 
-# Map Bulbapedia game title patterns to short game names
+# Map Bulbapedia game title patterns to short game names.
+# ORDER MATTERS: more-specific (longer) patterns must come before any shorter
+# pattern that is a substring of them (e.g. 'Omega Ruby' before 'Ruby').
 GAME_TITLE_MAP = {
-    'Red and Blue': 'Red/Blue',
-    'Red and Green': 'Red/Green',
-    'Yellow': 'Yellow',
-    'Gold and Silver': 'Gold/Silver',
-    'Crystal': 'Crystal',
-    'Ruby and Sapphire': 'Ruby/Sapphire',
-    'Emerald': 'Emerald',
-    'FireRed and LeafGreen': 'FireRed/LeafGreen',
-    'Diamond and Pearl': 'Diamond/Pearl',
-    'Platinum': 'Platinum',
-    'HeartGold and SoulSilver': 'HeartGold/SoulSilver',
-    'Black and White': 'Black/White',
-    'Black 2 and White 2': 'Black 2/White 2',
-    'X and Y': 'X/Y',
+    # ── Paired / combined article titles ─────────────────────────────────
     'Omega Ruby and Alpha Sapphire': 'Omega Ruby/Alpha Sapphire',
-    'Sun and Moon': 'Sun/Moon',
-    'Ultra Sun and Ultra Moon': 'Ultra Sun/Ultra Moon',
+    'Ultra Sun and Ultra Moon':      'Ultra Sun/Ultra Moon',
     "Let's Go, Pikachu! and Let's Go, Eevee!": "Let's Go Pikachu/Eevee",
-    'Sword and Shield': 'Sword/Shield',
     'Brilliant Diamond and Shining Pearl': 'Brilliant Diamond/Shining Pearl',
+    'HeartGold and SoulSilver':      'HeartGold/SoulSilver',
+    'Black 2 and White 2':           'Black 2/White 2',
+    'FireRed and LeafGreen':         'FireRed/LeafGreen',
+    'Red and Blue':                  'Red/Blue',
+    'Red and Green':                 'Red/Green',
+    'Gold and Silver':               'Gold/Silver',
+    'Ruby and Sapphire':             'Ruby/Sapphire',
+    'Diamond and Pearl':             'Diamond/Pearl',
+    'Black and White':               'Black/White',
+    'Scarlet and Violet':            'Scarlet/Violet',
+    'Sword and Shield':              'Sword/Shield',
+    'Sun and Moon':                  'Sun/Moon',
+    'X and Y':                       'X/Y',
+    # ── Legends titles ────────────────────────────────────────────────────
     'Legends: Arceus': 'Legends: Arceus',
-    'Scarlet and Violet': 'Scarlet/Violet',
+    'Legends: Z-A':    'Legends: Z-A',
+    # ── Multi-word individual titles (before any single-word subset) ──────
+    'Black 2':          'Black 2/White 2',
+    'White 2':          'Black 2/White 2',
+    'Omega Ruby':       'Omega Ruby/Alpha Sapphire',
+    'Alpha Sapphire':   'Omega Ruby/Alpha Sapphire',
+    'Ultra Sun':        'Ultra Sun/Ultra Moon',
+    'Ultra Moon':       'Ultra Sun/Ultra Moon',
+    'Brilliant Diamond':'Brilliant Diamond/Shining Pearl',
+    'Shining Pearl':    'Brilliant Diamond/Shining Pearl',
+    'HeartGold':        'HeartGold/SoulSilver',
+    'SoulSilver':       'HeartGold/SoulSilver',
+    'FireRed':          'FireRed/LeafGreen',
+    'LeafGreen':        'FireRed/LeafGreen',
+    "Let's Go, Pikachu!": "Let's Go Pikachu/Eevee",
+    "Let's Go, Eevee!":   "Let's Go Pikachu/Eevee",
+    # ── Single-word titles ────────────────────────────────────────────────
+    'Yellow':   'Yellow',
+    'Crystal':  'Crystal',
+    'Emerald':  'Emerald',
+    'Platinum': 'Platinum',
+    'Red':      'Red/Blue',
+    'Blue':     'Red/Blue',
+    'Green':    'Red/Green',
+    'Gold':     'Gold/Silver',
+    'Silver':   'Gold/Silver',
+    'Ruby':     'Ruby/Sapphire',
+    'Sapphire': 'Ruby/Sapphire',
+    'Diamond':  'Diamond/Pearl',
+    'Pearl':    'Diamond/Pearl',
+    'Black':    'Black/White',
+    'White':    'Black/White',
+    'X':        'X/Y',
+    'Y':        'X/Y',
+    'Sun':      'Sun/Moon',
+    'Moon':     'Sun/Moon',
+    'Sword':    'Sword/Shield',
+    'Shield':   'Sword/Shield',
+    'Scarlet':  'Scarlet/Violet',
+    'Violet':   'Scarlet/Violet',
+    # ── Spin-offs ─────────────────────────────────────────────────────────
+    'Colosseum':            'Colosseum',
+    'XD: Gale of Darkness': 'XD: Gale of Darkness',
 }
 
 
@@ -77,39 +120,84 @@ class BulbapediaItemLocationsSpider(scrapy.Spider):
         if not item_name:
             return
 
-        # Find the Acquisition section
-        acq_heading = response.xpath('//span[@id="Acquisition"]/ancestor::h3')
-        if not acq_heading:
-            acq_heading = response.xpath('//span[@id="Acquisition"]/ancestor::h4')
+        # Helper: decide if a link title is a game title (not a species/place/misc page)
+        def is_game_title(title):
+            if not (title.startswith('Pokémon ') or title.startswith('Pokémon:')):
+                return False
+            # Exclude known non-game pages
+            for skip in [
+                '(Pokémon)', 'Pokémon Adventures', 'Pokémon the Series',
+                'List of Pokémon', 'Pokémon Center', 'Pokémon Trainer',
+                'Pokémon Horizons', 'Pokémon GO', 'Pokémon HOME',
+                'Pokémon UNITE', 'Pokémon Masters', 'Pokémon Stadium',
+                'Pokémon Snap', 'Pokémon Ranger', 'Pokémon Mystery Dungeon',
+                'Pokémon Rumble', 'Pokémon Pinball', 'Pokémon Conquest',
+            ]:
+                if skip in title:
+                    return False
+            # Accept titles that reference any known game keyword
+            if re.search(
+                r'Version|Colosseum|XD:|Legends:'
+                r'|FireRed|LeafGreen|HeartGold|SoulSilver'
+                r'|Omega Ruby|Alpha Sapphire|Brilliant Diamond|Shining Pearl'
+                r'|Ultra Sun|Ultra Moon|Let.s Go'
+                r'|Sword and Shield|\bSword\b|\bShield\b'
+                r'|Scarlet and Violet|\bScarlet\b|\bViolet\b'
+                r'|Sun and Moon|\bSun\b|\bMoon\b'
+                r'|X and Y|\bX\b|\bY\b',
+                title,
+            ):
+                return True
+            return False
+
+        # Find the Acquisition or Availability section heading (h2, h3, or h4)
+        acq_heading = None
+        for section_id in ('Acquisition', 'Availability'):
+            for tag in ('h3', 'h4', 'h2'):
+                acq_heading = response.xpath(
+                    f'//span[@id="{section_id}"]/ancestor::{tag}'
+                )
+                if acq_heading:
+                    break
+            if acq_heading:
+                break
         if not acq_heading:
             return
 
-        # Find the acquisition table (border="1" table after the heading)
+        # Find the acquisition table.
+        # Bulbapedia wraps the data table (border="1") inside an outer roundy table.
         acq_table = acq_heading.xpath(
             'following::table[.//table[@border="1"]][1]//table[@border="1"]'
         )
         if not acq_table:
-            # Try direct sibling
+            # Try a direct border="1" table (no wrapper)
             acq_table = acq_heading.xpath('following::table[@border="1"][1]')
+        if not acq_table:
+            # Fallback: wikitable class
+            acq_table = acq_heading.xpath('following::table[contains(@class,"wikitable")][1]')
         if not acq_table:
             return
 
         for row in acq_table.xpath('.//tbody/tr'):
+            # Skip header rows (th cells only)
             cells = row.xpath('./td')
             if len(cells) < 2:
                 continue
 
-            # Cell 0: Games
+            # Cell 0: Games — extract game names from link titles
             games_cell = cells[0]
-            # Extract game names from link titles
-            game_titles = games_cell.xpath('.//a[contains(@title, "Pokémon")]/@title').getall()
+            all_link_titles = games_cell.xpath('.//a/@title').getall()
             games = []
-            for title in game_titles:
+            seen_games = set()
+            for title in all_link_titles:
+                if not is_game_title(title):
+                    continue
                 game = extract_game_name(title)
-                if game and game not in games:
+                if game and game not in seen_games:
+                    seen_games.add(game)
                     games.append(game)
 
-            # Also check for non-linked game text (Colo, XD, etc.)
+            # Fallback: use raw cell text if no game links were recognised
             if not games:
                 cell_text = clean_text(cells[0].get())
                 if cell_text:
@@ -137,8 +225,7 @@ class BulbapediaItemLocationsSpider(scrapy.Spider):
 
             location_str = '; '.join(locations)
 
-            # Determine method based on content
-            method = None
+            # Determine method based on which columns have content
             if repeat_text and not finite_text:
                 method = 'Repeatable'
             elif finite_text and not repeat_text:

@@ -88,6 +88,22 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Get Pokemon that hold this item in the wild
+	holders, _ := db.GetWildHeldItemsByItem(r.Context(), item.Name)
+	heldByPokemon := make([]map[string]any, 0)
+	if holders != nil {
+		for _, h := range holders {
+			heldByPokemon = append(heldByPokemon, map[string]any{
+				"pokemon": map[string]any{
+					"name": strings.ToLower(h.PokemonName),
+					"url":  "/api/v2/pokemon/" + strings.ToLower(h.PokemonName) + "/",
+				},
+				"game":   h.Game,
+				"rarity": h.Rarity,
+			})
+		}
+	}
+
 	resp := map[string]any{
 		"id":   0,
 		"name": apiName,
@@ -111,11 +127,54 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 		"sprites": map[string]any{
 			"default": spriteURL,
 		},
-		"held_by_pokemon":  []any{},
-		"game_locations":   gameLocations,
+		"held_by_pokemon": heldByPokemon,
+		"game_locations":  gameLocations,
 	}
 
 	writeJSON(w, 200, resp)
+}
+
+// GET /api/v2/item-locations?game={game}
+func ListItemLocationsByGame(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	if game == "" {
+		writeError(w, 400, "game query parameter is required")
+		return
+	}
+
+	locs, err := db.GetItemLocationsByGame(r.Context(), game)
+	if err != nil || locs == nil {
+		locs = []models.ItemLocation{}
+	}
+
+	results := make([]map[string]any, len(locs))
+	for i, l := range locs {
+		method := ""
+		if l.Method != nil {
+			method = *l.Method
+		}
+		results[i] = map[string]any{
+			"item_name": l.ItemName,
+			"game":      l.Game,
+			"location":  l.Location,
+			"method":    method,
+		}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"game":    game,
+		"count":   len(results),
+		"results": results,
+	})
+}
+
+// GET /api/v2/item-locations/games
+func ListItemLocationGames(w http.ResponseWriter, r *http.Request) {
+	games, err := db.GetAllItemLocationGames(r.Context())
+	if err != nil || games == nil {
+		games = []string{}
+	}
+	writeJSON(w, 200, map[string]any{"games": games})
 }
 
 // GET /api/v2/item/{identifier}/locations
@@ -583,6 +642,131 @@ func GetPokemonSprites(w http.ResponseWriter, r *http.Request) {
 		sprites = []models.PokemonSprite{}
 	}
 	writeJSON(w, 200, sprites)
+}
+
+// --- TM locations ---
+
+// GET /api/v2/tm?game={game}
+func ListTmLocations(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	if game == "" {
+		writeError(w, 400, "game query parameter is required")
+		return
+	}
+
+	locs, err := db.GetTmLocations(r.Context(), game)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if locs == nil {
+		locs = []models.TmLocation{}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"game":    game,
+		"count":   len(locs),
+		"results": locs,
+	})
+}
+
+// GET /api/v2/tm/games
+func ListTmGames(w http.ResponseWriter, r *http.Request) {
+	games, err := db.GetAllTmGames(r.Context())
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if games == nil {
+		games = []string{}
+	}
+	writeJSON(w, 200, map[string]any{"games": games})
+}
+
+// --- Pokemon game locations ---
+
+// GET /api/v2/pokemon/{identifier}/game-locations
+func GetPokemonGameLocationsHandler(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+
+	locs, _ := db.GetPokemonGameLocations(r.Context(), p.Name)
+	if locs == nil {
+		locs = []models.PokemonGameLocation{}
+	}
+
+	result := make([]map[string]any, len(locs))
+	for i, l := range locs {
+		method := ""
+		if l.Method != nil {
+			method = *l.Method
+		}
+		result[i] = map[string]any{
+			"game":     l.Game,
+			"location": l.Location,
+			"method":   method,
+		}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"pokemon_name": p.Name,
+		"locations":    result,
+	})
+}
+
+// --- Wild held items ---
+
+// GET /api/v2/pokemon/{identifier}/held-items
+func GetPokemonHeldItems(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+
+	items, _ := db.GetWildHeldItemsByPokemon(r.Context(), p.Name)
+	if items == nil {
+		items = []models.WildHeldItem{}
+	}
+
+	result := make([]map[string]any, len(items))
+	for i, h := range items {
+		result[i] = map[string]any{
+			"item":   map[string]string{"name": strings.ToLower(h.ItemName)},
+			"game":   h.Game,
+			"rarity": h.Rarity,
+		}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"pokemon_name": p.Name,
+		"held_items":   result,
+	})
+}
+
+// --- Pokemon biology ---
+
+// GET /api/v2/pokemon/{identifier}/biology
+func GetPokemonBiologyHandler(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+
+	bio, err := db.GetPokemonBiologyText(r.Context(), p.Name)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"pokemon_name": p.Name, "biology": ""})
+		return
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"pokemon_name": bio.PokemonName,
+		"biology":      bio.Biology,
+	})
 }
 
 // --- helpers ---

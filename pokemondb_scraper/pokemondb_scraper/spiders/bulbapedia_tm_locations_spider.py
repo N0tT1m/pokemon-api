@@ -3,34 +3,106 @@ import scrapy
 from pokemondb_scraper.items import TmLocationItem
 
 
+def is_game_title(title):
+    """Return True only if a Bulbapedia link title refers to an actual Pokemon game."""
+    if not (title.startswith('Pokémon ') or title.startswith('Pokémon:')):
+        return False
+    for skip in [
+        '(Pokémon)', 'Pokémon Adventures', 'Pokémon the Series',
+        'List of Pokémon', 'Pokémon Center', 'Pokémon Trainer',
+        'Pokémon Horizons', 'Pokémon GO', 'Pokémon HOME',
+        'Pokémon UNITE', 'Pokémon Masters', 'Pokémon Stadium',
+        'Pokémon Snap', 'Pokémon Ranger', 'Pokémon Mystery Dungeon',
+        'Pokémon Rumble', 'Pokémon Pinball', 'Pokémon Conquest',
+    ]:
+        if skip in title:
+            return False
+    if re.search(
+        r'Version|Colosseum|XD:|Legends:'
+        r'|FireRed|LeafGreen|HeartGold|SoulSilver'
+        r'|Omega Ruby|Alpha Sapphire|Brilliant Diamond|Shining Pearl'
+        r'|Ultra Sun|Ultra Moon|Let.s Go'
+        r'|Sword and Shield|\bSword\b|\bShield\b'
+        r'|Scarlet and Violet|\bScarlet\b|\bViolet\b'
+        r'|Sun and Moon|\bSun\b|\bMoon\b'
+        r'|X and Y|\bX\b|\bY\b',
+        title,
+    ):
+        return True
+    return False
+
+
 def extract_game_short(title):
     """Extract short game name from Bulbapedia link title."""
     name = re.sub(r'^Pokémon\s+', '', title)
     name = re.sub(r'\s+Versions?$', '', name)
     name = re.sub(r'\s+Version\s*\(Japanese\)$', '', name)
+    # ORDER MATTERS: more-specific (longer) patterns must come before any shorter
+    # pattern that is a substring of them (e.g. 'Omega Ruby' before 'Ruby').
     mapping = {
-        'Red and Blue': 'Red/Blue',
-        'Red and Green': 'Red/Green',
-        'Yellow': 'Yellow',
-        'Gold and Silver': 'Gold/Silver',
-        'Crystal': 'Crystal',
-        'Ruby and Sapphire': 'Ruby/Sapphire',
-        'Emerald': 'Emerald',
-        'FireRed and LeafGreen': 'FireRed/LeafGreen',
-        'Diamond and Pearl': 'Diamond/Pearl',
-        'Platinum': 'Platinum',
-        'HeartGold and SoulSilver': 'HeartGold/SoulSilver',
-        'Black and White': 'Black/White',
-        'Black 2 and White 2': 'Black 2/White 2',
-        'X and Y': 'X/Y',
+        # ── Paired / combined article titles ─────────────────────────────
         'Omega Ruby and Alpha Sapphire': 'Omega Ruby/Alpha Sapphire',
-        'Sun and Moon': 'Sun/Moon',
-        'Ultra Sun and Ultra Moon': 'Ultra Sun/Ultra Moon',
+        'Ultra Sun and Ultra Moon':      'Ultra Sun/Ultra Moon',
         "Let's Go, Pikachu! and Let's Go, Eevee!": "Let's Go Pikachu/Eevee",
-        'Sword and Shield': 'Sword/Shield',
         'Brilliant Diamond and Shining Pearl': 'Brilliant Diamond/Shining Pearl',
+        'HeartGold and SoulSilver':      'HeartGold/SoulSilver',
+        'Black 2 and White 2':           'Black 2/White 2',
+        'FireRed and LeafGreen':         'FireRed/LeafGreen',
+        'Red and Blue':                  'Red/Blue',
+        'Red and Green':                 'Red/Green',
+        'Gold and Silver':               'Gold/Silver',
+        'Ruby and Sapphire':             'Ruby/Sapphire',
+        'Diamond and Pearl':             'Diamond/Pearl',
+        'Black and White':               'Black/White',
+        'Scarlet and Violet':            'Scarlet/Violet',
+        'Sword and Shield':              'Sword/Shield',
+        'Sun and Moon':                  'Sun/Moon',
+        'X and Y':                       'X/Y',
+        # ── Legends titles ────────────────────────────────────────────────
         'Legends: Arceus': 'Legends: Arceus',
-        'Scarlet and Violet': 'Scarlet/Violet',
+        'Legends: Z-A':    'Legends: Z-A',
+        # ── Multi-word individual titles (before any single-word subset) ──
+        'Black 2':          'Black 2/White 2',
+        'White 2':          'Black 2/White 2',
+        'Omega Ruby':       'Omega Ruby/Alpha Sapphire',
+        'Alpha Sapphire':   'Omega Ruby/Alpha Sapphire',
+        'Ultra Sun':        'Ultra Sun/Ultra Moon',
+        'Ultra Moon':       'Ultra Sun/Ultra Moon',
+        'Brilliant Diamond':'Brilliant Diamond/Shining Pearl',
+        'Shining Pearl':    'Brilliant Diamond/Shining Pearl',
+        'HeartGold':        'HeartGold/SoulSilver',
+        'SoulSilver':       'HeartGold/SoulSilver',
+        'FireRed':          'FireRed/LeafGreen',
+        'LeafGreen':        'FireRed/LeafGreen',
+        "Let's Go, Pikachu!": "Let's Go Pikachu/Eevee",
+        "Let's Go, Eevee!":   "Let's Go Pikachu/Eevee",
+        # ── Single-word titles ─────────────────────────────────────────────
+        'Yellow':   'Yellow',
+        'Crystal':  'Crystal',
+        'Emerald':  'Emerald',
+        'Platinum': 'Platinum',
+        'Red':      'Red/Blue',
+        'Blue':     'Red/Blue',
+        'Green':    'Red/Green',
+        'Gold':     'Gold/Silver',
+        'Silver':   'Gold/Silver',
+        'Ruby':     'Ruby/Sapphire',
+        'Sapphire': 'Ruby/Sapphire',
+        'Diamond':  'Diamond/Pearl',
+        'Pearl':    'Diamond/Pearl',
+        'Black':    'Black/White',
+        'White':    'Black/White',
+        'X':        'X/Y',
+        'Y':        'X/Y',
+        'Sun':      'Sun/Moon',
+        'Moon':     'Sun/Moon',
+        'Sword':    'Sword/Shield',
+        'Shield':   'Sword/Shield',
+        'Scarlet':  'Scarlet/Violet',
+        'Violet':   'Scarlet/Violet',
+        # ── Spin-offs ──────────────────────────────────────────────────────
+        'Colosseum':            'Colosseum',
+        'XD: Gale of Darkness': 'XD: Gale of Darkness',
     }
     for pattern, short in mapping.items():
         if pattern in name:
@@ -113,10 +185,12 @@ class BulbapediaTmLocationsSpider(scrapy.Spider):
 
                     # First cell: game abbreviations
                     game_cell = cells[0]
-                    # Try link titles first
-                    game_titles = game_cell.xpath('.//a[contains(@title, "Pokémon")]/@title').getall()
+                    # Try link titles first — filter to actual game titles only
+                    all_link_titles = game_cell.xpath('.//a/@title').getall()
                     games = []
-                    for title in game_titles:
+                    for title in all_link_titles:
+                        if not is_game_title(title):
+                            continue
                         game = extract_game_short(title)
                         if game and game not in games:
                             games.append(game)

@@ -25,6 +25,7 @@ from pokemondb_scraper.items import (
     PokemonSpriteItem,
     WildHeldItemItem,
     PokemonBiologyItem,
+    PokemonGameLocationItem,
 )
 
 SCHEMA_SQL = """
@@ -248,6 +249,15 @@ CREATE TABLE IF NOT EXISTS pokemon_biology (
     pokemon_name TEXT NOT NULL UNIQUE,
     biology      TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS pokemon_game_locations (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL,
+    game         TEXT NOT NULL,
+    location     TEXT NOT NULL,
+    method       TEXT,
+    UNIQUE(pokemon_name, game, location)
+);
 """
 
 
@@ -320,6 +330,8 @@ class PostgresPipeline:
             self._upsert_wild_held_item(adapter)
         elif isinstance(item, PokemonBiologyItem):
             self._upsert_pokemon_biology(adapter)
+        elif isinstance(item, PokemonGameLocationItem):
+            self._upsert_pokemon_game_location(adapter)
 
         self.conn.commit()
         return item
@@ -543,4 +555,12 @@ class PostgresPipeline:
             VALUES (%(pokemon_name)s, %(biology)s)
             ON CONFLICT (pokemon_name) DO UPDATE SET
                 biology = EXCLUDED.biology
+        """, dict(a))
+
+    def _upsert_pokemon_game_location(self, a):
+        self.cur.execute("""
+            INSERT INTO pokemon_game_locations (pokemon_name, game, location, method)
+            VALUES (%(pokemon_name)s, %(game)s, %(location)s, %(method)s)
+            ON CONFLICT (pokemon_name, game, location) DO UPDATE SET
+                method = COALESCE(EXCLUDED.method, pokemon_game_locations.method)
         """, dict(a))

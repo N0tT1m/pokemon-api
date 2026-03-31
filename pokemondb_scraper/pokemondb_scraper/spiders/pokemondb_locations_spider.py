@@ -95,10 +95,17 @@ class PokemonDbLocationsSpider(scrapy.Spider):
                         if not games:
                             continue
 
-                        # Rarity: try percentage badge first, then icon alt text
+                        # Rarity: try percentage badge first (newer gens use span.icon-rarity),
+                        # then fall back to icon-loc alt text in non-cell-fixed tds
+                        # (older gens use icon images like "Common", "Uncommon", "Rare").
+                        # We must skip cell-fixed tds since those hold time-of-day icons
+                        # (Morning/Day/Night) which share the same icon-loc class.
                         rarity = row.css('span.icon-rarity::text').get('')
                         if not rarity:
-                            rarity_img = row.xpath('.//td//img[has-class("icon-loc")]/@alt').get('')
+                            rarity_img = row.xpath(
+                                './/td[not(contains(@class,"cell-fixed"))]'
+                                '//img[has-class("icon-loc")]/@alt'
+                            ).get('')
                             if rarity_img and rarity_img.strip().lower() not in ('morning', 'day', 'night'):
                                 rarity = rarity_img.strip()
 
