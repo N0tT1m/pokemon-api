@@ -30,6 +30,10 @@ echo "=== Running Natures scraper ==="
 scrapy crawl pokemondb_natures --nolog -L WARNING
 echo "=== Natures data synced ==="
 
+echo "=== Running Bulbapedia scraper ==="
+scrapy crawl bulbapedia_item_locations --nolog -L WARNING
+scrapy crawl bulbapedia_pokemon --nolog -L WARNING
+
 echo "=== Starting API server ==="
 cd /app
 exec ./pokedex-api

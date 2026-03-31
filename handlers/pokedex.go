@@ -184,7 +184,35 @@ func GetPokedex(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Mapping from PokeAPI regional-dex names to our DB game names.
+var regionToGame = map[string]string{
+	"kanto":            "Red/Blue/Yellow",
+	"original-johto":   "Gold/Silver/Crystal",
+	"hoenn":            "Ruby/Sapphire/Emerald",
+	"original-sinnoh":  "Diamond/Pearl",
+	"extended-sinnoh":  "Platinum",
+	"original-unova":   "Black/White",
+	"updated-unova":    "Black 2/White 2",
+	"kalos-central":    "X/Y",
+	"kalos-coastal":    "X/Y",
+	"kalos-mountain":   "X/Y",
+	"original-alola":   "Sun/Moon",
+	"updated-alola":    "Ultra Sun/Ultra Moon",
+	"galar":            "Sword/Shield",
+	"isle-of-armor":    "Sword/Shield",
+	"crown-tundra":     "Sword/Shield",
+	"hisui":            "Legends: Arceus",
+	"paldea":           "Scarlet/Violet",
+	"kitakami":         "The Teal Mask",
+	"blueberry":        "The Indigo Disk",
+}
+
 func slugToGameName(slug string) string {
+	// Check region names first (e.g. "kanto", "galar", "paldea")
+	if game, ok := regionToGame[slug]; ok {
+		return game
+	}
+
 	for vgSlug, games := range versionGroupToGame {
 		dexSlug := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(games[0], " ", "-"), "/", "-"))
 		if slug == dexSlug || slug == vgSlug {
