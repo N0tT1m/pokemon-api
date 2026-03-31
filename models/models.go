@@ -153,6 +153,18 @@ type TmLocation struct {
 	Location string `json:"location"`
 }
 
+type WildHeldItem struct {
+	PokemonName string `json:"pokemon_name"`
+	Game        string `json:"game"`
+	ItemName    string `json:"item_name"`
+	Rarity      string `json:"rarity"`
+}
+
+type PokemonBiology struct {
+	PokemonName string `json:"pokemon_name"`
+	Biology     string `json:"biology"`
+}
+
 type PokemonName struct {
 	Language      string `json:"language"`
 	LocalizedName string `json:"localized_name"`

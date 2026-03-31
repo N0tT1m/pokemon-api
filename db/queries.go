@@ -562,6 +562,27 @@ func GetBerryFlavors(ctx context.Context, berryName string) ([]models.BerryFlavo
 	return flavors, nil
 }
 
+// --- Item location queries ---
+
+func GetItemLocations(ctx context.Context, itemName string) ([]models.ItemLocation, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT item_name, game, location, method FROM item_locations WHERE LOWER(item_name) = LOWER($1) ORDER BY game
+	`, itemName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var locations []models.ItemLocation
+	for rows.Next() {
+		var l models.ItemLocation
+		if err := rows.Scan(&l.ItemName, &l.Game, &l.Location, &l.Method); err != nil {
+			return nil, err
+		}
+		locations = append(locations, l)
+	}
+	return locations, nil
+}
+
 func GetPokemonNames(ctx context.Context, pokemonName string) ([]models.PokemonName, error) {
 	rows, err := Pool.Query(ctx, `
 		SELECT language, localized_name FROM pokemon_names WHERE pokemon_name = $1 ORDER BY language

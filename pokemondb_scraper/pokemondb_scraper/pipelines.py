@@ -23,6 +23,8 @@ from pokemondb_scraper.items import (
     TmLocationItem,
     PokemonNameItem,
     PokemonSpriteItem,
+    WildHeldItemItem,
+    PokemonBiologyItem,
 )
 
 SCHEMA_SQL = """
@@ -231,6 +233,21 @@ CREATE TABLE IF NOT EXISTS pokemon_sprites (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_pokemon_sprites_unique
     ON pokemon_sprites(pokemon_name, sprite_type, url, COALESCE(generation, ''));
+
+CREATE TABLE IF NOT EXISTS wild_held_items (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL,
+    game         TEXT NOT NULL,
+    item_name    TEXT NOT NULL,
+    rarity       TEXT,
+    UNIQUE(pokemon_name, game, item_name)
+);
+
+CREATE TABLE IF NOT EXISTS pokemon_biology (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL UNIQUE,
+    biology      TEXT NOT NULL
+);
 """
 
 
@@ -299,6 +316,10 @@ class PostgresPipeline:
             self._upsert_pokemon_name(adapter)
         elif isinstance(item, PokemonSpriteItem):
             self._upsert_pokemon_sprite(adapter)
+        elif isinstance(item, WildHeldItemItem):
+            self._upsert_wild_held_item(adapter)
+        elif isinstance(item, PokemonBiologyItem):
+            self._upsert_pokemon_biology(adapter)
 
         self.conn.commit()
         return item
@@ -506,4 +527,20 @@ class PostgresPipeline:
             INSERT INTO pokemon_sprites (pokemon_name, sprite_type, generation, url)
             VALUES (%(pokemon_name)s, %(sprite_type)s, %(generation)s, %(url)s)
             ON CONFLICT (pokemon_name, sprite_type, COALESCE(generation, ''), url) DO NOTHING
+        """, dict(a))
+
+    def _upsert_wild_held_item(self, a):
+        self.cur.execute("""
+            INSERT INTO wild_held_items (pokemon_name, game, item_name, rarity)
+            VALUES (%(pokemon_name)s, %(game)s, %(item_name)s, %(rarity)s)
+            ON CONFLICT (pokemon_name, game, item_name) DO UPDATE SET
+                rarity = EXCLUDED.rarity
+        """, dict(a))
+
+    def _upsert_pokemon_biology(self, a):
+        self.cur.execute("""
+            INSERT INTO pokemon_biology (pokemon_name, biology)
+            VALUES (%(pokemon_name)s, %(biology)s)
+            ON CONFLICT (pokemon_name) DO UPDATE SET
+                biology = EXCLUDED.biology
         """, dict(a))

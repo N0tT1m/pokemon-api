@@ -71,6 +71,23 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 		spriteURL = *item.SpriteURL
 	}
 
+	// Get game locations for this item
+	locations, _ := db.GetItemLocations(r.Context(), item.Name)
+	gameLocations := make([]map[string]any, 0)
+	if locations != nil {
+		for _, loc := range locations {
+			method := ""
+			if loc.Method != nil {
+				method = *loc.Method
+			}
+			gameLocations = append(gameLocations, map[string]any{
+				"game":     loc.Game,
+				"location": loc.Location,
+				"method":   method,
+			})
+		}
+	}
+
 	resp := map[string]any{
 		"id":   0,
 		"name": apiName,
@@ -94,10 +111,43 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 		"sprites": map[string]any{
 			"default": spriteURL,
 		},
-		"held_by_pokemon": []any{},
+		"held_by_pokemon":  []any{},
+		"game_locations":   gameLocations,
 	}
 
 	writeJSON(w, 200, resp)
+}
+
+// GET /api/v2/item/{identifier}/locations
+func GetItemLocations(w http.ResponseWriter, r *http.Request) {
+	identifier := chi.URLParam(r, "identifier")
+	displayName := strings.ReplaceAll(identifier, "-", " ")
+
+	locations, err := db.GetItemLocations(r.Context(), displayName)
+	if err != nil {
+		locations, err = db.GetItemLocations(r.Context(), identifier)
+		if err != nil {
+			writeJSON(w, 200, []any{})
+			return
+		}
+	}
+
+	result := make([]map[string]any, 0)
+	if locations != nil {
+		for _, loc := range locations {
+			method := ""
+			if loc.Method != nil {
+				method = *loc.Method
+			}
+			result = append(result, map[string]any{
+				"game":     loc.Game,
+				"location": loc.Location,
+				"method":   method,
+			})
+		}
+	}
+
+	writeJSON(w, 200, result)
 }
 
 // --- Moves ---

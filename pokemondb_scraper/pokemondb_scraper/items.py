@@ -163,3 +163,13 @@ class PokemonSpriteItem(scrapy.Item):
     sprite_type = scrapy.Field()
     generation = scrapy.Field()
     url = scrapy.Field()
+
+class WildHeldItemItem(scrapy.Item):
+    pokemon_name = scrapy.Field()
+    game = scrapy.Field()
+    item_name = scrapy.Field()
+    rarity = scrapy.Field()
+
+class PokemonBiologyItem(scrapy.Item):
+    pokemon_name = scrapy.Field()
+    biology = scrapy.Field()

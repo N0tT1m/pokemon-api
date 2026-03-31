@@ -45,6 +45,7 @@ func main() {
 	// Reference database endpoints
 	r.Get("/api/v2/item", handlers.ListItems)
 	r.Get("/api/v2/item/{identifier}", handlers.GetItem)
+	r.Get("/api/v2/item/{identifier}/locations", handlers.GetItemLocations)
 	r.Get("/api/v2/move", handlers.ListMoves)
 	r.Get("/api/v2/move/{identifier}", handlers.GetMove)
 	r.Get("/api/v2/ability", handlers.ListAbilities)

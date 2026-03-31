@@ -318,28 +318,38 @@ class PokemonDbAllPokemon(scrapy.Spider):
                         accuracy=accuracy,
                     )
 
-        # --- Pokedex entries (flavor text, dl/dt/dd structure) ---
-        dex_dl = response.xpath('//h2[contains(text(),"dex entries")]/following-sibling::div[1]//dl | //h2[contains(text(),"dex entries")]/following-sibling::dl[1]')
-        for dt in dex_dl.xpath('./dt'):
-            game_names = dt.xpath('.//text()').getall()
-            dd = dt.xpath('./following-sibling::dd[1]')
-            flavor_text = ' '.join(dd.xpath('.//text()').getall()).strip()
-            if game_names and flavor_text:
-                for game_name in game_names:
-                    game_name = game_name.strip()
-                    if game_name:
-                        yield PokedexEntryItem(
-                            pokemon_name=pokemon_name,
-                            game_version=game_name,
-                            flavor_text=flavor_text,
-                        )
+        # --- Pokedex entries (flavor text) ---
+        # Structure: h2 "Pokédex entries" -> h3 (form) -> div.resp-scroll > table.vitals-table
+        #   Each row: th > span.igame (game names) | td.cell-med-text (flavor text)
+        for h3 in response.xpath('//h2[contains(text(),"dex entries")]/following-sibling::h3'):
+            # Stop if we hit the next h2
+            next_h2 = h3.xpath('./following-sibling::h2[1]')
+            table = h3.xpath('./following-sibling::div[1]//table[has-class("vitals-table")]')
+            if not table:
+                table = h3.xpath('./following-sibling::table[has-class("vitals-table")][1]')
+            for row in table.xpath('.//tbody/tr'):
+                game_spans = row.xpath('./th//span[has-class("igame")]/text()').getall()
+                flavor_text = row.xpath('./td[has-class("cell-med-text")]//text()').get('').strip()
+                if flavor_text:
+                    for game_name in game_spans:
+                        game_name = game_name.strip()
+                        if game_name:
+                            yield PokedexEntryItem(
+                                pokemon_name=pokemon_name,
+                                game_version=game_name,
+                                flavor_text=flavor_text,
+                            )
 
-        # --- Multi-language names (dl/dt/dd structure) ---
-        names_dl = response.xpath('//h2[contains(text(),"Other languages")]/following-sibling::div[1]//dl | //h2[contains(text(),"Other languages")]/following-sibling::dl[1]')
-        for dt in names_dl.xpath('./dt'):
-            language = dt.xpath('.//text()').get('').strip()
-            dd = dt.xpath('./following-sibling::dd[1]')
-            localized = dd.xpath('.//text()').get('').strip()
+        # --- Multi-language names ---
+        # Structure: h2 "Other languages" -> div > table.vitals-table
+        #   Each row: th (language) | td (localized name)
+        # Take only the first vitals-table after "Other languages" (names, not species names)
+        names_table = response.xpath(
+            '//h2[contains(text(),"Other languages")]/following-sibling::div[1]//table[has-class("vitals-table")][1]'
+        )
+        for row in names_table.xpath('.//tbody/tr'):
+            language = row.xpath('./th/text()').get('').strip()
+            localized = row.xpath('./td//text()').get('').strip()
             if language and localized:
                 yield PokemonNameItem(
                     pokemon_name=pokemon_name,
@@ -348,24 +358,25 @@ class PokemonDbAllPokemon(scrapy.Spider):
                 )
 
         # --- Sprites ---
-        for sprite_section in response.xpath('//h2[contains(text(),"Sprites")]/following-sibling::*'):
-            tag = sprite_section.xpath('name()').get('')
-            if tag == 'h2':
-                break  # Next section
-            # Look for generation headers and sprite images
-            gen_name = sprite_section.xpath('.//h3/text()').get('')
-            for img in sprite_section.xpath('.//img/@src').getall():
-                if 'sprites' in img or 'artwork' in img:
-                    sprite_type = 'normal'
-                    if 'shiny' in img.lower():
-                        sprite_type = 'shiny'
-                    elif 'female' in img.lower():
-                        sprite_type = 'female'
+        # Structure: table.sprites-history-table
+        #   thead: th = "Type", "Generation 1", "Generation 2", ...
+        #   tbody: each tr: td[0] = sprite type (Normal/Shiny), td[1..N] = img per generation
+        sprites_table = response.xpath('//table[has-class("sprites-history-table")]')
+        gen_headers = sprites_table.xpath('.//thead/tr/th/text()').getall()
+        for row in sprites_table.xpath('.//tbody/tr'):
+            cells = row.xpath('./td')
+            sprite_type = cells[0].xpath('.//b/text()').get('').strip().lower() if cells else ''
+            if not sprite_type:
+                sprite_type = cells[0].xpath('.//text()').get('').strip().lower() if cells else ''
+            for i, cell in enumerate(cells[1:], start=1):
+                img_url = cell.xpath('.//img/@src').get('')
+                if img_url:
+                    gen_name = gen_headers[i] if i < len(gen_headers) else ''
                     yield PokemonSpriteItem(
                         pokemon_name=pokemon_name,
                         sprite_type=sprite_type,
                         generation=gen_name.strip() if gen_name else None,
-                        url=img,
+                        url=img_url,
                     )
 
         # --- Game national dex (from "Local №" row) ---
