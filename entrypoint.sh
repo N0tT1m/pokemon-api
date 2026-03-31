@@ -32,7 +32,9 @@ echo "=== Natures data synced ==="
 
 echo "=== Running Bulbapedia scraper ==="
 scrapy crawl bulbapedia_item_locations --nolog -L WARNING
+scrapy crawl bulbapedia_tm_locations --nolog -L WARNING
 scrapy crawl bulbapedia_pokemon --nolog -L WARNING
+scrapy crawl bulbapedia_pokemon_locations --nolog -L WARNING
 
 echo "=== Starting API server ==="
 cd /app
