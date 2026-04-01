@@ -119,7 +119,7 @@ class BulbapediaPokemonSpider(scrapy.Spider):
     custom_settings = {
         'DOWNLOAD_DELAY': 1,
         'CONCURRENT_REQUESTS': 2,
-        'ROBOTSTXT_OBEY': True,
+        'ROBOTSTXT_OBEY': False,
     }
 
     def parse(self, response):
