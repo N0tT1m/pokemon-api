@@ -1,3 +1,7 @@
+networks:
+  pokedex_net:
+    name: pokedex_net
+
 services:
   db:
     image: postgres:17
@@ -10,6 +14,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - pokedex_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U pokedex"]
       interval: 5s
@@ -27,7 +33,9 @@ services:
       TLS_CERT: /app/certs/fullchain.pem
       TLS_KEY: /app/certs/privkey.pem
     volumes:
-      - ./certs:/app/certs:ro 
+      - ./certs:/app/certs:ro
+    networks:
+      - pokedex_net
     depends_on:
       db:
         condition: service_healthy

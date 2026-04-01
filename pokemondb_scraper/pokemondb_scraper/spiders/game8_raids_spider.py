@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timezone
 import scrapy
 from pokemondb_scraper.items import RaidEventItem, RaidCounterItem
 
@@ -45,6 +46,52 @@ def _parse_date_range(text):
     if len(parts) == 2:
         return parts[0].strip(), parts[1].strip()
     return parts[0].strip(), None
+
+
+# Formats game8 commonly uses for event dates.
+_DATE_FORMATS = [
+    '%B %d, %Y',      # January 1, 2025
+    '%b %d, %Y',      # Jan 1, 2025
+    '%B %d %Y',       # January 1 2025
+    '%b %d %Y',       # Jan 1 2025
+    '%m/%d/%Y',       # 01/01/2025
+    '%Y-%m-%d',       # 2025-01-01
+    '%d %B %Y',       # 1 January 2025
+    '%d %b %Y',       # 1 Jan 2025
+]
+
+
+def _try_parse_date(text):
+    """Try to parse a date string into a date object. Returns None on failure."""
+    if not text:
+        return None
+    # Strip ordinal suffixes: 1st, 2nd, 3rd, 4th … 31st
+    cleaned = re.sub(r'(\d+)(st|nd|rd|th)', r'\1', text.strip(), flags=re.I)
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _is_active_from_dates(event_start, event_end):
+    """
+    Return True if today falls within [event_start, event_end].
+    Returns None if dates cannot be parsed (caller should fall back).
+    """
+    start = _try_parse_date(event_start)
+    if start is None:
+        return None
+    today = datetime.now(timezone.utc).date()
+    if event_end:
+        end = _try_parse_date(event_end)
+        if end is None:
+            return None
+        return start <= today <= end
+    # No end date: treat as active if start is in the past 60 days
+    delta = (today - start).days
+    return 0 <= delta <= 60
 
 
 class Game8RaidsSpider(scrapy.Spider):
@@ -124,10 +171,14 @@ class Game8RaidsSpider(scrapy.Spider):
                 elif 'star' in header and not star_rating:
                     star_rating = _parse_star_rating(value)
 
-        # Check page body text for "currently active" signals
-        body_text = _clean(' '.join(response.css('article *::text, .a-contentBlock *::text').getall())).lower()
-        if re.search(r'currently\s+active|now\s+available|ongoing\s+event', body_text):
-            is_active = True
+        # Determine is_active: prefer date-based calculation, fall back to page text
+        active_from_dates = _is_active_from_dates(event_start, event_end)
+        if active_from_dates is not None:
+            is_active = active_from_dates
+        else:
+            body_text = _clean(' '.join(response.css('article *::text, .a-contentBlock *::text').getall())).lower()
+            if re.search(r'currently\s+active|now\s+available|ongoing\s+event', body_text):
+                is_active = True
 
         yield RaidEventItem(
             pokemon_name=pokemon_name,
