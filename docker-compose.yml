@@ -40,5 +40,18 @@ services:
       db:
         condition: service_healthy
 
+  crawler:
+    build:
+      context: ./pokemondb_scraper
+    environment:
+      DATABASE_URI: postgresql://pokedex:pokedex@db:5432/pokedex
+    networks:
+      - pokedex_net
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - crawl
+
 volumes:
   pgdata:
