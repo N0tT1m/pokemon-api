@@ -174,14 +174,14 @@ class BulbapediaPokemonSpider(scrapy.Spider):
 
         # Find the held items table (has "Held items" in header)
         held_table = held_heading.xpath(
-            'following::table[.//th[contains(text(), "Held items")]][1]'
+            'following::table[.//th[contains(., "Held items")]][1]'
         )
         if not held_table:
             return
 
         for row in held_table.xpath('.//tr'):
             # Skip header row
-            if row.xpath('./th[contains(text(), "Held items")]'):
+            if row.xpath('./th[contains(., "Held items")]'):
                 continue
 
             # Get game names from th cells with links — filter to actual game titles only

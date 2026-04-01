@@ -294,9 +294,11 @@ class BulbapediaPokemonLocationsSpider(scrapy.Spider):
                 'following::table[contains(@class,"wikitable")][1]'
             )
         if not loc_table:
+            loc_table = loc_heading.xpath('following::table[1]')
+        if not loc_table:
             return
 
-        for row in loc_table.xpath('.//tbody/tr'):
+        for row in loc_table.xpath('.//tr'):
             # Skip pure-header rows
             if not row.xpath('./td'):
                 continue

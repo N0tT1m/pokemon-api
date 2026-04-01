@@ -106,7 +106,7 @@ class BulbapediaItemLocationsSpider(scrapy.Spider):
     def parse(self, response):
         """Parse the item list page and follow links to individual item pages."""
         # Items are in table rows: sprite | name link | gen | description
-        for row in response.css('table.sortable tr'):
+        for row in response.css('table.roundy tr'):
             link = row.css('td:nth-child(2) a::attr(href)').get()
             if link and '/wiki/' in link:
                 yield response.follow(link, callback=self.parse_item_page)
