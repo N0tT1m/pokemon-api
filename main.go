@@ -74,6 +74,11 @@ func main() {
 	r.Get("/api/v2/location/region/{region}/routes", handlers.ListRoutes)
 	r.Get("/api/v2/location/region/{region}/route/{route}", handlers.GetRouteEncounters)
 
+	// News / live event endpoints
+	r.Get("/api/v2/news/raids", handlers.ListRaids)
+	r.Get("/api/v2/news/raids/active", handlers.ListActiveRaids)
+	r.Get("/api/v2/news/raids/{pokemon}", handlers.GetRaidByPokemon)
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "158"

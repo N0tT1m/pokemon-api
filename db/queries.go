@@ -769,6 +769,109 @@ func GetPokemonGameLocations(ctx context.Context, pokemonName string) ([]models.
 	return locs, nil
 }
 
+// --- Raid queries ---
+
+func GetAllRaidEvents(ctx context.Context) ([]models.RaidEvent, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url,
+		       to_char(scraped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		FROM raid_events
+		ORDER BY is_active DESC, scraped_at DESC
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []models.RaidEvent
+	for rows.Next() {
+		var e models.RaidEvent
+		if err := rows.Scan(&e.ID, &e.PokemonName, &e.TeraType, &e.StarRating, &e.EventStart, &e.EventEnd, &e.IsActive, &e.SourceURL, &e.ScrapedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
+}
+
+func GetActiveRaidEvents(ctx context.Context) ([]models.RaidEvent, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url,
+		       to_char(scraped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		FROM raid_events
+		WHERE is_active = TRUE
+		ORDER BY star_rating DESC, pokemon_name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []models.RaidEvent
+	for rows.Next() {
+		var e models.RaidEvent
+		if err := rows.Scan(&e.ID, &e.PokemonName, &e.TeraType, &e.StarRating, &e.EventStart, &e.EventEnd, &e.IsActive, &e.SourceURL, &e.ScrapedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
+}
+
+func GetRaidEventsByPokemon(ctx context.Context, pokemonName string) ([]models.RaidEvent, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url,
+		       to_char(scraped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+		FROM raid_events
+		WHERE LOWER(pokemon_name) = LOWER($1)
+		ORDER BY scraped_at DESC
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []models.RaidEvent
+	for rows.Next() {
+		var e models.RaidEvent
+		if err := rows.Scan(&e.ID, &e.PokemonName, &e.TeraType, &e.StarRating, &e.EventStart, &e.EventEnd, &e.IsActive, &e.SourceURL, &e.ScrapedAt); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
+}
+
+func GetRaidCounters(ctx context.Context, pokemonName string, teraType string) ([]models.RaidCounter, error) {
+	query := `
+		SELECT pokemon_name, tera_type, counter_pokemon, rank, notes
+		FROM raid_counters
+		WHERE LOWER(pokemon_name) = LOWER($1)
+		ORDER BY rank NULLS LAST, counter_pokemon
+	`
+	args := []any{pokemonName}
+	if teraType != "" {
+		query = `
+			SELECT pokemon_name, tera_type, counter_pokemon, rank, notes
+			FROM raid_counters
+			WHERE LOWER(pokemon_name) = LOWER($1) AND LOWER(COALESCE(tera_type, '')) = LOWER($2)
+			ORDER BY rank NULLS LAST, counter_pokemon
+		`
+		args = append(args, teraType)
+	}
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var counters []models.RaidCounter
+	for rows.Next() {
+		var c models.RaidCounter
+		if err := rows.Scan(&c.PokemonName, &c.TeraType, &c.CounterPokemon, &c.Rank, &c.Notes); err != nil {
+			return nil, err
+		}
+		counters = append(counters, c)
+	}
+	return counters, nil
+}
+
 // --- Pokemon biology queries ---
 
 func GetPokemonBiologyText(ctx context.Context, pokemonName string) (*models.PokemonBiology, error) {

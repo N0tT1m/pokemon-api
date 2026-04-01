@@ -182,3 +182,23 @@ type PokemonGameLocation struct {
 	Location    string  `json:"location"`
 	Method      *string `json:"method"`
 }
+
+type RaidEvent struct {
+	ID          int     `json:"id"`
+	PokemonName string  `json:"pokemon_name"`
+	TeraType    *string `json:"tera_type"`
+	StarRating  *int    `json:"star_rating"`
+	EventStart  *string `json:"event_start"`
+	EventEnd    *string `json:"event_end"`
+	IsActive    bool    `json:"is_active"`
+	SourceURL   *string `json:"source_url"`
+	ScrapedAt   string  `json:"scraped_at"`
+}
+
+type RaidCounter struct {
+	PokemonName    string  `json:"pokemon_name"`
+	TeraType       *string `json:"tera_type"`
+	CounterPokemon string  `json:"counter_pokemon"`
+	Rank           *int    `json:"rank"`
+	Notes          *string `json:"notes"`
+}

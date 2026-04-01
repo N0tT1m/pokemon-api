@@ -26,6 +26,8 @@ from pokemondb_scraper.items import (
     WildHeldItemItem,
     PokemonBiologyItem,
     PokemonGameLocationItem,
+    RaidEventItem,
+    RaidCounterItem,
 )
 
 SCHEMA_SQL = """
@@ -258,6 +260,29 @@ CREATE TABLE IF NOT EXISTS pokemon_game_locations (
     method       TEXT,
     UNIQUE(pokemon_name, game, location)
 );
+
+CREATE TABLE IF NOT EXISTS raid_events (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL,
+    tera_type    TEXT,
+    star_rating  INTEGER,
+    event_start  TEXT,
+    event_end    TEXT,
+    is_active    BOOLEAN NOT NULL DEFAULT FALSE,
+    source_url   TEXT,
+    scraped_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(pokemon_name, COALESCE(tera_type, ''), COALESCE(event_start, ''))
+);
+
+CREATE TABLE IF NOT EXISTS raid_counters (
+    id              SERIAL PRIMARY KEY,
+    pokemon_name    TEXT NOT NULL,
+    tera_type       TEXT,
+    counter_pokemon TEXT NOT NULL,
+    rank            INTEGER,
+    notes           TEXT,
+    UNIQUE(pokemon_name, COALESCE(tera_type, ''), counter_pokemon)
+);
 """
 
 
@@ -332,6 +357,10 @@ class PostgresPipeline:
             self._upsert_pokemon_biology(adapter)
         elif isinstance(item, PokemonGameLocationItem):
             self._upsert_pokemon_game_location(adapter)
+        elif isinstance(item, RaidEventItem):
+            self._upsert_raid_event(adapter)
+        elif isinstance(item, RaidCounterItem):
+            self._upsert_raid_counter(adapter)
 
         self.conn.commit()
         return item
@@ -563,4 +592,25 @@ class PostgresPipeline:
             VALUES (%(pokemon_name)s, %(game)s, %(location)s, %(method)s)
             ON CONFLICT (pokemon_name, game, location) DO UPDATE SET
                 method = COALESCE(EXCLUDED.method, pokemon_game_locations.method)
+        """, dict(a))
+
+    def _upsert_raid_event(self, a):
+        self.cur.execute("""
+            INSERT INTO raid_events (pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url)
+            VALUES (%(pokemon_name)s, %(tera_type)s, %(star_rating)s, %(event_start)s, %(event_end)s, %(is_active)s, %(source_url)s)
+            ON CONFLICT (pokemon_name, COALESCE(tera_type, ''), COALESCE(event_start, '')) DO UPDATE SET
+                star_rating  = EXCLUDED.star_rating,
+                event_end    = EXCLUDED.event_end,
+                is_active    = EXCLUDED.is_active,
+                source_url   = EXCLUDED.source_url,
+                scraped_at   = NOW()
+        """, dict(a))
+
+    def _upsert_raid_counter(self, a):
+        self.cur.execute("""
+            INSERT INTO raid_counters (pokemon_name, tera_type, counter_pokemon, rank, notes)
+            VALUES (%(pokemon_name)s, %(tera_type)s, %(counter_pokemon)s, %(rank)s, %(notes)s)
+            ON CONFLICT (pokemon_name, COALESCE(tera_type, ''), counter_pokemon) DO UPDATE SET
+                rank  = EXCLUDED.rank,
+                notes = EXCLUDED.notes
         """, dict(a))

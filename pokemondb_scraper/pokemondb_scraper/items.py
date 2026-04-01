@@ -180,3 +180,23 @@ class PokemonGameLocationItem(scrapy.Item):
     game         = scrapy.Field()   # e.g. "Diamond/Pearl"
     location     = scrapy.Field()   # e.g. "Hallowed Tower (32 underground encounters)"
     method       = scrapy.Field()   # e.g. "Special", "Wild", "Gift", "Fossil", "Trade", "Event"
+
+
+class RaidEventItem(scrapy.Item):
+    """A Tera Raid event scraped from game8.co."""
+    pokemon_name = scrapy.Field()   # e.g. "Charizard"
+    tera_type    = scrapy.Field()   # e.g. "Dragon"
+    star_rating  = scrapy.Field()   # int, e.g. 7
+    event_start  = scrapy.Field()   # text date string
+    event_end    = scrapy.Field()   # text date string
+    is_active    = scrapy.Field()   # bool
+    source_url   = scrapy.Field()   # game8 article URL
+
+
+class RaidCounterItem(scrapy.Item):
+    """A recommended counter Pokemon for a Tera Raid event."""
+    pokemon_name    = scrapy.Field()   # raid Pokemon, e.g. "Charizard"
+    tera_type       = scrapy.Field()   # tera type of the raid
+    counter_pokemon = scrapy.Field()   # recommended counter, e.g. "Azumarill"
+    rank            = scrapy.Field()   # int, position in the recommended list
+    notes           = scrapy.Field()   # optional notes/reason
