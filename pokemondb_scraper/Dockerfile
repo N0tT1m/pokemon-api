@@ -5,8 +5,7 @@ RUN apk add --no-cache libpq dos2unix \
 
 WORKDIR /app
 
-COPY pokemondb_scraper/ /app/pokemondb_scraper/
-COPY entrypoint.sh .
+COPY . .
 RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]

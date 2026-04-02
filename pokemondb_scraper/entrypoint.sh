@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-cd /app/pokemondb_scraper
+cd /app
 
 echo "=== Running Pokemon scraper ==="
 scrapy crawl pokemondb_pokemon --nolog -L WARNING
