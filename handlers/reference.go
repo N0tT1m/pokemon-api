@@ -209,6 +209,35 @@ func GetItemLocations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, result)
 }
 
+// --- Types ---
+
+// GET /api/v2/type/{identifier}
+func GetType(w http.ResponseWriter, r *http.Request) {
+	identifier := strings.ToLower(chi.URLParam(r, "identifier"))
+
+	names, err := db.GetPokemonByType(r.Context(), identifier)
+	if err != nil || names == nil {
+		names = []string{}
+	}
+
+	pokemon := make([]map[string]any, len(names))
+	for i, n := range names {
+		apiName := strings.ToLower(n)
+		pokemon[i] = map[string]any{
+			"pokemon": map[string]any{
+				"name": apiName,
+				"url":  "/api/v2/pokemon/" + apiName + "/",
+			},
+			"slot": 1,
+		}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"name":    identifier,
+		"pokemon": pokemon,
+	})
+}
+
 // --- Moves ---
 
 // GET /api/v2/move?limit=N&offset=N

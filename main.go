@@ -33,6 +33,7 @@ func main() {
 	r.Get("/api/v2/pokemon/{identifier}/type-defenses", handlers.GetPokemonTypeDefenses)
 	r.Get("/api/v2/pokemon-species/{identifier}", handlers.GetPokemonSpecies)
 	r.Get("/api/v2/evolution-chain/{id}", handlers.GetEvolutionChain)
+	r.Get("/api/v2/type/{identifier}", handlers.GetType)
 
 	// PokeAPI-compatible pokedex endpoints
 	r.Get("/api/v2/version-group/{name}", handlers.GetVersionGroup)

@@ -872,6 +872,30 @@ func GetRaidCounters(ctx context.Context, pokemonName string, teraType string) (
 	return counters, nil
 }
 
+// --- Type queries ---
+
+// GetPokemonByType returns all Pokemon names that have the given type (case-insensitive).
+func GetPokemonByType(ctx context.Context, typeName string) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT name FROM pokemon
+		WHERE EXISTS (SELECT 1 FROM UNNEST(types) t WHERE LOWER(t) = LOWER($1))
+		ORDER BY name
+	`, typeName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, nil
+}
+
 // --- Pokemon biology queries ---
 
 func GetPokemonBiologyText(ctx context.Context, pokemonName string) (*models.PokemonBiology, error) {
