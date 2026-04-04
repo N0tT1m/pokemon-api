@@ -7,6 +7,8 @@ WORKDIR /app
 
 COPY . .
 
+ENV PYTHONPATH=/app
+
 RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]
