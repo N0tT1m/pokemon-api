@@ -206,6 +206,69 @@ class PokemonDbAllPokemon(scrapy.Spider):
         )
         yield item
 
+        # --- Alternate forms (Mega, regional variants, forme differences) ---
+        # pokemondb uses a tab panel per form inside div.tabset-basics.
+        # Tab links: a.tabs-tab[href="#tab-basic-N"] → panel: div.tabs-panel#tab-basic-N
+        tab_links = response.css('div.tabset-basics a.tabs-tab')
+        tab_panels = response.css('div.tabset-basics div.tabs-panel')
+        if len(tab_panels) > 1:
+            for tab_link, panel in zip(tab_links, tab_panels):
+                form_name = tab_link.css('::text').get('').strip()
+                # Skip the base form (first tab) — already captured above
+                if tab_link.css('.is-active') or tab_link.attrib.get('class', '').startswith('tabs-tab is-active'):
+                    continue
+                if not form_name or form_name == pokemon_name:
+                    continue
+
+                # Form vitals
+                form_vitals = {}
+                for row in panel.xpath('.//table[has-class("vitals-table")]//tbody/tr'):
+                    key   = ' '.join(row.xpath('./th//text()').getall()).strip()
+                    value = ' '.join(row.xpath('./td//text()').getall()).strip()
+                    if key:
+                        form_vitals[key] = value
+
+                # Form abilities
+                form_abilities = []
+                ability_td = panel.xpath(
+                    './/table[has-class("vitals-table")]//th[contains(text(),"Abilities")]/following-sibling::td[1]'
+                )
+                for link in ability_td.xpath('.//a'):
+                    aname = link.xpath('./text()').get('').strip()
+                    if aname:
+                        parent_text = ' '.join(link.xpath('./parent::*//text()').getall())
+                        if 'hidden ability' in parent_text.lower():
+                            aname += ' (Hidden)'
+                        form_abilities.append(aname)
+
+                # Form base stats (any tr whose th is a known stat key)
+                form_stats = {}
+                for row in panel.xpath('.//tbody/tr'):
+                    key = row.xpath('./th/text()').get('').strip()
+                    cells = [c.strip() for c in row.xpath('./td//text()').getall() if c.strip()]
+                    if key in STAT_KEYS and cells:
+                        form_stats[STAT_KEYS[key]] = parse_int(cells[0])
+
+                if not form_vitals and not form_stats:
+                    continue  # Empty panel — skip
+
+                form_types_raw = form_vitals.get('Type', '') or vitals.get('Type', '')
+                yield PokemonFormItem(
+                    pokemon_name=pokemon_name,
+                    form_name=form_name,
+                    types=form_types_raw.split() if form_types_raw else [],
+                    abilities=form_abilities or abilities,
+                    height=form_vitals.get('Height', '') or vitals.get('Height', ''),
+                    weight=form_vitals.get('Weight', '') or vitals.get('Weight', ''),
+                    hp=form_stats.get('hp'),
+                    attack=form_stats.get('attack'),
+                    defense=form_stats.get('defense'),
+                    sp_atk=form_stats.get('sp_atk'),
+                    sp_def=form_stats.get('sp_def'),
+                    speed=form_stats.get('speed'),
+                    total=form_stats.get('total'),
+                )
+
         # --- Type defenses ---
         for cell in response.xpath('//table[has-class("type-table")]//tr[td]//td'):
             type_name = cell.xpath('./@title').get('').split('\u2192')[0].strip()
@@ -273,12 +336,26 @@ class PokemonDbAllPokemon(scrapy.Spider):
                 continue
 
             is_egg_or_tutor = learn_method in ('egg', 'tutor')
+            last_egg_move = None  # track move name for parent rows
             for row in table.xpath('.//tbody/tr'):
                 cells = row.xpath('./td')
                 if not cells:
                     continue
 
                 if is_egg_or_tutor:
+                    # Detect parent-pokemon rows: a single td[colspan] containing ent-name links
+                    if len(cells) == 1 and cells[0].xpath('./@colspan'):
+                        if learn_method == 'egg' and last_egg_move:
+                            for parent_link in cells[0].xpath('.//a[has-class("ent-name")]'):
+                                parent_name = parent_link.xpath('./text()').get('').strip()
+                                if parent_name:
+                                    yield EggMovePokemonItem(
+                                        pokemon_name=pokemon_name,
+                                        move_name=last_egg_move,
+                                        parent_name=parent_name,
+                                    )
+                        continue
+
                     move_name = cells[0].xpath('.//a[has-class("ent-name")]/text()').get('')
                     if not move_name:
                         move_name = cells[0].xpath('.//a/text()').get('')
@@ -288,11 +365,14 @@ class PokemonDbAllPokemon(scrapy.Spider):
                         category = cells[2].xpath('.//text()').get('') if len(cells) > 2 else ''
                     power = parse_int(cells[3].xpath('.//text()').get('')) if len(cells) > 3 else None
                     accuracy = parse_int(cells[4].xpath('.//text()').get('')) if len(cells) > 4 else None
+                    move_name = (move_name or '').strip()
+                    if move_name and learn_method == 'egg':
+                        last_egg_move = move_name
                     yield MoveItem(
                         pokemon_name=pokemon_name,
                         learn_method=learn_method,
                         level_or_tm='—',
-                        move_name=(move_name or '').strip(),
+                        move_name=move_name,
                         type=(move_type or '').strip(),
                         category=(category or '').strip(),
                         power=power,

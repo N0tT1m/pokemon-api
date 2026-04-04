@@ -105,9 +105,11 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"id":   0,
-		"name": apiName,
-		"cost": 0,
+		"id":         0,
+		"name":       apiName,
+		"cost":       item.BuyPrice,
+		"buy_price":  item.BuyPrice,
+		"sell_price": item.SellPrice,
 		"category": map[string]any{
 			"name": strings.ToLower(strings.ReplaceAll(category, " ", "-")),
 		},
@@ -315,13 +317,19 @@ func GetMove(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	target := ""
+	if m.Target != nil {
+		target = *m.Target
+	}
+
 	resp := map[string]any{
 		"id":       0,
 		"name":     apiName,
 		"accuracy": m.Accuracy,
 		"power":    m.Power,
 		"pp":       m.PP,
-		"priority": 0,
+		"priority": m.Priority,
+		"target":   target,
 		"type": map[string]any{
 			"name": moveType,
 			"url":  "/api/v2/type/" + moveType + "/",
@@ -870,6 +878,55 @@ func GetPokemonBiologyHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"pokemon_name": bio.PokemonName,
 		"biology":      bio.Biology,
+	})
+}
+
+// --- Pokemon forms ---
+
+// GET /api/v2/pokemon/{identifier}/forms
+func GetPokemonForms(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+
+	forms, _ := db.GetPokemonForms(r.Context(), p.Name)
+	if forms == nil {
+		forms = []models.PokemonForm{}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"pokemon_name": p.Name,
+		"forms":        forms,
+	})
+}
+
+// --- Egg move parents ---
+
+// GET /api/v2/pokemon/{identifier}/egg-move-parents
+// Optional query: ?move={move_name} to filter to a specific egg move.
+func GetEggMoveParents(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+
+	moveName := r.URL.Query().Get("move")
+	var parents []models.EggMoveParent
+	if moveName != "" {
+		parents, _ = db.GetEggMoveParents(r.Context(), p.Name, moveName)
+	} else {
+		parents, _ = db.GetAllEggMoveParents(r.Context(), p.Name)
+	}
+	if parents == nil {
+		parents = []models.EggMoveParent{}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"pokemon_name": p.Name,
+		"parents":      parents,
 	})
 }
 

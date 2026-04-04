@@ -244,7 +244,8 @@ func GetAllItems(ctx context.Context, limit, offset int) ([]models.ItemDetail, i
 		return nil, 0, err
 	}
 	rows, err := Pool.Query(ctx, `
-		SELECT name, category, effect, sprite_url FROM item_details ORDER BY name LIMIT $1 OFFSET $2
+		SELECT name, category, effect, sprite_url, buy_price, sell_price
+		FROM item_details ORDER BY name LIMIT $1 OFFSET $2
 	`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -253,7 +254,7 @@ func GetAllItems(ctx context.Context, limit, offset int) ([]models.ItemDetail, i
 	var items []models.ItemDetail
 	for rows.Next() {
 		var i models.ItemDetail
-		if err := rows.Scan(&i.Name, &i.Category, &i.Effect, &i.SpriteURL); err != nil {
+		if err := rows.Scan(&i.Name, &i.Category, &i.Effect, &i.SpriteURL, &i.BuyPrice, &i.SellPrice); err != nil {
 			return nil, 0, err
 		}
 		items = append(items, i)
@@ -264,8 +265,9 @@ func GetAllItems(ctx context.Context, limit, offset int) ([]models.ItemDetail, i
 func GetItemByName(ctx context.Context, name string) (*models.ItemDetail, error) {
 	i := &models.ItemDetail{}
 	err := Pool.QueryRow(ctx, `
-		SELECT name, category, effect, sprite_url FROM item_details WHERE LOWER(name) = LOWER($1)
-	`, name).Scan(&i.Name, &i.Category, &i.Effect, &i.SpriteURL)
+		SELECT name, category, effect, sprite_url, buy_price, sell_price
+		FROM item_details WHERE LOWER(name) = LOWER($1)
+	`, name).Scan(&i.Name, &i.Category, &i.Effect, &i.SpriteURL, &i.BuyPrice, &i.SellPrice)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +283,7 @@ func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDet
 		return nil, 0, err
 	}
 	rows, err := Pool.Query(ctx, `
-		SELECT name, type, category, power, accuracy, pp, effect, effect_chance
+		SELECT name, type, category, power, accuracy, pp, effect, effect_chance, priority, target
 		FROM move_details ORDER BY name LIMIT $1 OFFSET $2
 	`, limit, offset)
 	if err != nil {
@@ -291,7 +293,7 @@ func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDet
 	var moves []models.MoveDetail
 	for rows.Next() {
 		var m models.MoveDetail
-		if err := rows.Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance); err != nil {
+		if err := rows.Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance, &m.Priority, &m.Target); err != nil {
 			return nil, 0, err
 		}
 		moves = append(moves, m)
@@ -302,13 +304,80 @@ func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDet
 func GetMoveDetailByName(ctx context.Context, name string) (*models.MoveDetail, error) {
 	m := &models.MoveDetail{}
 	err := Pool.QueryRow(ctx, `
-		SELECT name, type, category, power, accuracy, pp, effect, effect_chance
+		SELECT name, type, category, power, accuracy, pp, effect, effect_chance, priority, target
 		FROM move_details WHERE LOWER(name) = LOWER($1)
-	`, name).Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance)
+	`, name).Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance, &m.Priority, &m.Target)
 	if err != nil {
 		return nil, err
 	}
 	return m, nil
+}
+
+func GetPokemonForms(ctx context.Context, pokemonName string) ([]models.PokemonForm, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, form_name, types, abilities, height, weight,
+		       hp, attack, defense, sp_atk, sp_def, speed, total
+		FROM pokemon_forms WHERE LOWER(pokemon_name) = LOWER($1)
+		ORDER BY form_name
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var forms []models.PokemonForm
+	for rows.Next() {
+		var f models.PokemonForm
+		if err := rows.Scan(&f.PokemonName, &f.FormName, &f.Types, &f.Abilities, &f.Height, &f.Weight,
+			&f.HP, &f.Attack, &f.Defense, &f.SpAtk, &f.SpDef, &f.Speed, &f.Total); err != nil {
+			return nil, err
+		}
+		forms = append(forms, f)
+	}
+	return forms, nil
+}
+
+func GetEggMoveParents(ctx context.Context, pokemonName, moveName string) ([]models.EggMoveParent, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, move_name, parent_name
+		FROM egg_move_parents
+		WHERE LOWER(pokemon_name) = LOWER($1) AND LOWER(move_name) = LOWER($2)
+		ORDER BY parent_name
+	`, pokemonName, moveName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var parents []models.EggMoveParent
+	for rows.Next() {
+		var p models.EggMoveParent
+		if err := rows.Scan(&p.PokemonName, &p.MoveName, &p.ParentName); err != nil {
+			return nil, err
+		}
+		parents = append(parents, p)
+	}
+	return parents, nil
+}
+
+func GetAllEggMoveParents(ctx context.Context, pokemonName string) ([]models.EggMoveParent, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, move_name, parent_name
+		FROM egg_move_parents
+		WHERE LOWER(pokemon_name) = LOWER($1)
+		ORDER BY move_name, parent_name
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var parents []models.EggMoveParent
+	for rows.Next() {
+		var p models.EggMoveParent
+		if err := rows.Scan(&p.PokemonName, &p.MoveName, &p.ParentName); err != nil {
+			return nil, err
+		}
+		parents = append(parents, p)
+	}
+	return parents, nil
 }
 
 // GetPokemonByMove returns Pokemon names that learn a given move

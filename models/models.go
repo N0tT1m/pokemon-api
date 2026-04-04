@@ -78,6 +78,8 @@ type ItemDetail struct {
 	Category  *string `json:"category"`
 	Effect    *string `json:"effect"`
 	SpriteURL *string `json:"sprite_url"`
+	BuyPrice  *int    `json:"buy_price"`
+	SellPrice *int    `json:"sell_price"`
 }
 
 type MoveDetail struct {
@@ -89,6 +91,30 @@ type MoveDetail struct {
 	PP           *int    `json:"pp"`
 	Effect       *string `json:"effect"`
 	EffectChance *int    `json:"effect_chance"`
+	Priority     *int    `json:"priority"`
+	Target       *string `json:"target"`
+}
+
+type PokemonForm struct {
+	PokemonName string   `json:"pokemon_name"`
+	FormName    string   `json:"form_name"`
+	Types       []string `json:"types"`
+	Abilities   []string `json:"abilities"`
+	Height      *string  `json:"height"`
+	Weight      *string  `json:"weight"`
+	HP          *int     `json:"hp"`
+	Attack      *int     `json:"attack"`
+	Defense     *int     `json:"defense"`
+	SpAtk       *int     `json:"sp_atk"`
+	SpDef       *int     `json:"sp_def"`
+	Speed       *int     `json:"speed"`
+	Total       *int     `json:"total"`
+}
+
+type EggMoveParent struct {
+	PokemonName string `json:"pokemon_name"`
+	MoveName    string `json:"move_name"`
+	ParentName  string `json:"parent_name"`
 }
 
 type AbilityDetail struct {

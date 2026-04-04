@@ -60,6 +60,8 @@ func main() {
 	r.Get("/api/v2/pokemon/{identifier}/held-items", handlers.GetPokemonHeldItems)
 	r.Get("/api/v2/pokemon/{identifier}/biology", handlers.GetPokemonBiologyHandler)
 	r.Get("/api/v2/pokemon/{identifier}/game-locations", handlers.GetPokemonGameLocationsHandler)
+	r.Get("/api/v2/pokemon/{identifier}/forms", handlers.GetPokemonForms)
+	r.Get("/api/v2/pokemon/{identifier}/egg-move-parents", handlers.GetEggMoveParents)
 
 	// TM location endpoints
 	r.Get("/api/v2/tm", handlers.ListTmLocations)

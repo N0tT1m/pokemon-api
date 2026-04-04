@@ -28,6 +28,8 @@ from pokemondb_scraper.items import (
     PokemonGameLocationItem,
     RaidEventItem,
     RaidCounterItem,
+    PokemonFormItem,
+    EggMovePokemonItem,
 )
 
 SCHEMA_SQL = """
@@ -122,20 +124,30 @@ CREATE TABLE IF NOT EXISTS item_details (
     name        TEXT NOT NULL UNIQUE,
     category    TEXT,
     effect      TEXT,
-    sprite_url  TEXT
+    sprite_url  TEXT,
+    buy_price   INTEGER,
+    sell_price  INTEGER
 );
 
+ALTER TABLE item_details ADD COLUMN IF NOT EXISTS buy_price  INTEGER;
+ALTER TABLE item_details ADD COLUMN IF NOT EXISTS sell_price INTEGER;
+
 CREATE TABLE IF NOT EXISTS move_details (
-    id          SERIAL PRIMARY KEY,
-    name        TEXT NOT NULL UNIQUE,
-    type        TEXT,
-    category    TEXT,
-    power       INTEGER,
-    accuracy    INTEGER,
-    pp          INTEGER,
-    effect      TEXT,
-    effect_chance INTEGER
+    id            SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL UNIQUE,
+    type          TEXT,
+    category      TEXT,
+    power         INTEGER,
+    accuracy      INTEGER,
+    pp            INTEGER,
+    effect        TEXT,
+    effect_chance INTEGER,
+    priority      INTEGER,
+    target        TEXT
 );
+
+ALTER TABLE move_details ADD COLUMN IF NOT EXISTS priority INTEGER;
+ALTER TABLE move_details ADD COLUMN IF NOT EXISTS target   TEXT;
 
 CREATE TABLE IF NOT EXISTS ability_details (
     id          SERIAL PRIMARY KEY,
@@ -283,6 +295,32 @@ CREATE TABLE IF NOT EXISTS raid_counters (
     notes           TEXT,
     UNIQUE(pokemon_name, COALESCE(tera_type, ''), counter_pokemon)
 );
+
+CREATE TABLE IF NOT EXISTS pokemon_forms (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL,
+    form_name    TEXT NOT NULL,
+    types        TEXT[],
+    abilities    TEXT[],
+    height       TEXT,
+    weight       TEXT,
+    hp           INTEGER,
+    attack       INTEGER,
+    defense      INTEGER,
+    sp_atk       INTEGER,
+    sp_def       INTEGER,
+    speed        INTEGER,
+    total        INTEGER,
+    UNIQUE(pokemon_name, form_name)
+);
+
+CREATE TABLE IF NOT EXISTS egg_move_parents (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL,
+    move_name    TEXT NOT NULL,
+    parent_name  TEXT NOT NULL,
+    UNIQUE(pokemon_name, move_name, parent_name)
+);
 """
 
 
@@ -361,6 +399,10 @@ class PostgresPipeline:
             self._upsert_raid_event(adapter)
         elif isinstance(item, RaidCounterItem):
             self._upsert_raid_counter(adapter)
+        elif isinstance(item, PokemonFormItem):
+            self._upsert_pokemon_form(adapter)
+        elif isinstance(item, EggMovePokemonItem):
+            self._upsert_egg_move_parent(adapter)
 
         self.conn.commit()
         return item
@@ -451,26 +493,30 @@ class PostgresPipeline:
 
     def _upsert_item_detail(self, a):
         self.cur.execute("""
-            INSERT INTO item_details (name, category, effect, sprite_url)
-            VALUES (%(name)s, %(category)s, %(effect)s, %(sprite_url)s)
+            INSERT INTO item_details (name, category, effect, sprite_url, buy_price, sell_price)
+            VALUES (%(name)s, %(category)s, %(effect)s, %(sprite_url)s, %(buy_price)s, %(sell_price)s)
             ON CONFLICT (name) DO UPDATE SET
-                category = EXCLUDED.category,
-                effect = EXCLUDED.effect,
-                sprite_url = EXCLUDED.sprite_url
+                category   = EXCLUDED.category,
+                effect     = EXCLUDED.effect,
+                sprite_url = EXCLUDED.sprite_url,
+                buy_price  = COALESCE(EXCLUDED.buy_price,  item_details.buy_price),
+                sell_price = COALESCE(EXCLUDED.sell_price, item_details.sell_price)
         """, dict(a))
 
     def _upsert_move_detail(self, a):
         self.cur.execute("""
-            INSERT INTO move_details (name, type, category, power, accuracy, pp, effect, effect_chance)
-            VALUES (%(name)s, %(type)s, %(category)s, %(power)s, %(accuracy)s, %(pp)s, %(effect)s, %(effect_chance)s)
+            INSERT INTO move_details (name, type, category, power, accuracy, pp, effect, effect_chance, priority, target)
+            VALUES (%(name)s, %(type)s, %(category)s, %(power)s, %(accuracy)s, %(pp)s, %(effect)s, %(effect_chance)s, %(priority)s, %(target)s)
             ON CONFLICT (name) DO UPDATE SET
-                type = EXCLUDED.type,
-                category = EXCLUDED.category,
-                power = EXCLUDED.power,
-                accuracy = EXCLUDED.accuracy,
-                pp = EXCLUDED.pp,
-                effect = EXCLUDED.effect,
-                effect_chance = EXCLUDED.effect_chance
+                type          = EXCLUDED.type,
+                category      = EXCLUDED.category,
+                power         = EXCLUDED.power,
+                accuracy      = EXCLUDED.accuracy,
+                pp            = EXCLUDED.pp,
+                effect        = EXCLUDED.effect,
+                effect_chance = EXCLUDED.effect_chance,
+                priority      = COALESCE(EXCLUDED.priority, move_details.priority),
+                target        = COALESCE(EXCLUDED.target,   move_details.target)
         """, dict(a))
 
     def _upsert_ability_detail(self, a):
@@ -613,4 +659,33 @@ class PostgresPipeline:
             ON CONFLICT (pokemon_name, COALESCE(tera_type, ''), counter_pokemon) DO UPDATE SET
                 rank  = EXCLUDED.rank,
                 notes = EXCLUDED.notes
+        """, dict(a))
+
+    def _upsert_pokemon_form(self, a):
+        self.cur.execute("""
+            INSERT INTO pokemon_forms
+                (pokemon_name, form_name, types, abilities, height, weight,
+                 hp, attack, defense, sp_atk, sp_def, speed, total)
+            VALUES
+                (%(pokemon_name)s, %(form_name)s, %(types)s, %(abilities)s, %(height)s, %(weight)s,
+                 %(hp)s, %(attack)s, %(defense)s, %(sp_atk)s, %(sp_def)s, %(speed)s, %(total)s)
+            ON CONFLICT (pokemon_name, form_name) DO UPDATE SET
+                types     = EXCLUDED.types,
+                abilities = EXCLUDED.abilities,
+                height    = EXCLUDED.height,
+                weight    = EXCLUDED.weight,
+                hp        = EXCLUDED.hp,
+                attack    = EXCLUDED.attack,
+                defense   = EXCLUDED.defense,
+                sp_atk    = EXCLUDED.sp_atk,
+                sp_def    = EXCLUDED.sp_def,
+                speed     = EXCLUDED.speed,
+                total     = EXCLUDED.total
+        """, dict(a))
+
+    def _upsert_egg_move_parent(self, a):
+        self.cur.execute("""
+            INSERT INTO egg_move_parents (pokemon_name, move_name, parent_name)
+            VALUES (%(pokemon_name)s, %(move_name)s, %(parent_name)s)
+            ON CONFLICT (pokemon_name, move_name, parent_name) DO NOTHING
         """, dict(a))
