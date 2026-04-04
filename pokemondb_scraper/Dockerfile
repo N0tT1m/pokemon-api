@@ -9,8 +9,6 @@ COPY . .
 
 ENV PYTHONPATH=/app
 
-RUN ls -la /app/ && ls -la /app/pokemondb_scraper/ || echo "pokemondb_scraper dir MISSING"
-
 RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]

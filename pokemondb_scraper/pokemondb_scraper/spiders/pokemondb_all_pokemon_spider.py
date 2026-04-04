@@ -12,6 +12,8 @@ from pokemondb_scraper.items import (
     PokedexEntryItem,
     PokemonNameItem,
     PokemonSpriteItem,
+    PokemonFormItem,
+    EggMovePokemonItem,
 )
 
 # Unicode fraction → float mapping for type defense values

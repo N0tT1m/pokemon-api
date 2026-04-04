@@ -86,6 +86,8 @@ class GameItemDetail(scrapy.Item):
     category = scrapy.Field()
     effect = scrapy.Field()
     sprite_url = scrapy.Field()
+    buy_price = scrapy.Field()   # int, Pokémon Dollars — None if not purchasable
+    sell_price = scrapy.Field()  # int, Pokémon Dollars — None if not sellable
 
 class MoveDetail(scrapy.Item):
     name = scrapy.Field()
@@ -96,6 +98,8 @@ class MoveDetail(scrapy.Item):
     pp = scrapy.Field()
     effect = scrapy.Field()
     effect_chance = scrapy.Field()
+    priority = scrapy.Field()    # int, e.g. 0, +1, -6
+    target = scrapy.Field()      # text, e.g. "Selected Pokémon"
 
 class AbilityDetail(scrapy.Item):
     name = scrapy.Field()
@@ -180,6 +184,30 @@ class PokemonGameLocationItem(scrapy.Item):
     game         = scrapy.Field()   # e.g. "Diamond/Pearl"
     location     = scrapy.Field()   # e.g. "Hallowed Tower (32 underground encounters)"
     method       = scrapy.Field()   # e.g. "Special", "Wild", "Gift", "Fossil", "Trade", "Event"
+
+
+class PokemonFormItem(scrapy.Item):
+    """Stats/types/abilities for a non-base form (Mega, regional variant, etc.)."""
+    pokemon_name = scrapy.Field()   # base Pokemon name, e.g. "Rotom"
+    form_name    = scrapy.Field()   # form label, e.g. "Heat Rotom"
+    types        = scrapy.Field()   # list of strings
+    abilities    = scrapy.Field()   # list of strings
+    height       = scrapy.Field()   # text
+    weight       = scrapy.Field()   # text
+    hp           = scrapy.Field()
+    attack       = scrapy.Field()
+    defense      = scrapy.Field()
+    sp_atk       = scrapy.Field()
+    sp_def       = scrapy.Field()
+    speed        = scrapy.Field()
+    total        = scrapy.Field()
+
+
+class EggMovePokemonItem(scrapy.Item):
+    """A parent Pokemon that can pass a given egg move."""
+    pokemon_name = scrapy.Field()   # the Pokemon that learns the egg move
+    move_name    = scrapy.Field()   # the egg move
+    parent_name  = scrapy.Field()   # a compatible parent
 
 
 class RaidEventItem(scrapy.Item):
