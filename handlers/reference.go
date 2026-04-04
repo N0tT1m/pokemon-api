@@ -567,9 +567,16 @@ func GetBerry(w http.ResponseWriter, r *http.Request) {
 
 // --- Location encounters ---
 
-// GET /api/v2/location/regions
+// GET /api/v2/location/regions?game={game}
 func ListRegions(w http.ResponseWriter, r *http.Request) {
-	regions, err := db.GetAllRegions(r.Context())
+	game := r.URL.Query().Get("game")
+	var regions []string
+	var err error
+	if game != "" {
+		regions, err = db.GetRegionsByGame(r.Context(), game)
+	} else {
+		regions, err = db.GetAllRegions(r.Context())
+	}
 	if err != nil {
 		writeError(w, 500, err.Error())
 		return

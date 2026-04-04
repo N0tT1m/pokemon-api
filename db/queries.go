@@ -538,6 +538,23 @@ func GetAllRegions(ctx context.Context) ([]string, error) {
 	return regions, nil
 }
 
+func GetRegionsByGame(ctx context.Context, game string) ([]string, error) {
+	rows, err := Pool.Query(ctx, `SELECT DISTINCT region FROM location_encounters WHERE $1 = ANY(games) ORDER BY region`, game)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var regions []string
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			return nil, err
+		}
+		regions = append(regions, r)
+	}
+	return regions, nil
+}
+
 func GetEncountersByPokemon(ctx context.Context, pokemonName string) ([]models.LocationEncounter, error) {
 	rows, err := Pool.Query(ctx, `
 		SELECT region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day
