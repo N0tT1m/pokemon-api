@@ -282,9 +282,11 @@ CREATE TABLE IF NOT EXISTS raid_events (
     event_end    TEXT,
     is_active    BOOLEAN NOT NULL DEFAULT FALSE,
     source_url   TEXT,
-    scraped_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(pokemon_name, COALESCE(tera_type, ''), COALESCE(event_start, ''))
+    scraped_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS raid_events_unique
+    ON raid_events (pokemon_name, COALESCE(tera_type, ''), COALESCE(event_start, ''));
 
 CREATE TABLE IF NOT EXISTS raid_counters (
     id              SERIAL PRIMARY KEY,
@@ -292,9 +294,11 @@ CREATE TABLE IF NOT EXISTS raid_counters (
     tera_type       TEXT,
     counter_pokemon TEXT NOT NULL,
     rank            INTEGER,
-    notes           TEXT,
-    UNIQUE(pokemon_name, COALESCE(tera_type, ''), counter_pokemon)
+    notes           TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS raid_counters_unique
+    ON raid_counters (pokemon_name, COALESCE(tera_type, ''), counter_pokemon);
 
 CREATE TABLE IF NOT EXISTS pokemon_forms (
     id           SERIAL PRIMARY KEY,
