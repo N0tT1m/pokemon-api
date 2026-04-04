@@ -586,10 +586,78 @@ func GetPokemonLocationEncounters(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GET /api/v2/location/region/{region}/routes
+// GET /api/v2/location/games
+func ListEncounterGames(w http.ResponseWriter, r *http.Request) {
+	abbreviations, err := db.GetAllEncounterGames(r.Context())
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if abbreviations == nil {
+		abbreviations = []string{}
+	}
+
+	gameNames := map[string]string{
+		"AS":  "Alpha Sapphire",
+		"B":   "Blue / Black",
+		"B2":  "Black 2",
+		"BD":  "Brilliant Diamond",
+		"C":   "Crystal",
+		"D":   "Diamond",
+		"E":   "Emerald",
+		"FR":  "FireRed",
+		"G":   "Gold",
+		"HG":  "HeartGold",
+		"LA":  "Legends: Arceus",
+		"LG":  "LeafGreen",
+		"LGE": "Let's Go Eevee",
+		"LGP": "Let's Go Pikachu",
+		"M":   "Moon",
+		"OR":  "Omega Ruby",
+		"P":   "Pearl",
+		"Pt":  "Platinum",
+		"R":   "Red / Ruby",
+		"S":   "Silver / Sun / Scarlet",
+		"Sh":  "Shield",
+		"SP":  "Shining Pearl",
+		"SS":  "SoulSilver",
+		"Sw":  "Sword",
+		"UM":  "Ultra Moon",
+		"US":  "Ultra Sun",
+		"V":   "Violet",
+		"W":   "White",
+		"W2":  "White 2",
+		"X":   "X",
+		"Y":   "Yellow / Y",
+	}
+
+	results := make([]map[string]any, len(abbreviations))
+	for i, abbr := range abbreviations {
+		name := abbr
+		if display, ok := gameNames[abbr]; ok {
+			name = display
+		}
+		results[i] = map[string]any{
+			"abbreviation": abbr,
+			"name":         name,
+		}
+	}
+
+	writeJSON(w, 200, map[string]any{"games": results})
+}
+
+// GET /api/v2/location/region/{region}/routes?game={game}
 func ListRoutes(w http.ResponseWriter, r *http.Request) {
 	region := chi.URLParam(r, "region")
-	routes, err := db.GetRoutesByRegion(r.Context(), region)
+	game := r.URL.Query().Get("game")
+
+	var routes []string
+	var err error
+	if game != "" {
+		routes, err = db.GetRoutesByRegionAndGame(r.Context(), region, game)
+	} else {
+		routes, err = db.GetRoutesByRegion(r.Context(), region)
+	}
 	if err != nil {
 		writeError(w, 500, err.Error())
 		return
@@ -597,12 +665,19 @@ func ListRoutes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"region": region, "routes": routes})
 }
 
-// GET /api/v2/location/region/{region}/route/{route}
+// GET /api/v2/location/region/{region}/route/{route}?game={game}
 func GetRouteEncounters(w http.ResponseWriter, r *http.Request) {
 	region := chi.URLParam(r, "region")
 	route := chi.URLParam(r, "route")
+	game := r.URL.Query().Get("game")
 
-	encounters, err := db.GetLocationEncounters(r.Context(), region, route)
+	var encounters []models.LocationEncounter
+	var err error
+	if game != "" {
+		encounters, err = db.GetLocationEncountersByGame(r.Context(), region, route, game)
+	} else {
+		encounters, err = db.GetLocationEncounters(r.Context(), region, route)
+	}
 	if err != nil {
 		writeError(w, 500, err.Error())
 		return

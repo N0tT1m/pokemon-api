@@ -70,6 +70,7 @@ func main() {
 	r.Get("/api/v2/item-locations/games", handlers.ListItemLocationGames)
 
 	// Location encounter endpoints
+	r.Get("/api/v2/location/games", handlers.ListEncounterGames)
 	r.Get("/api/v2/location/regions", handlers.ListRegions)
 	r.Get("/api/v2/location/pokemon/{name}", handlers.GetPokemonLocationEncounters)
 	r.Get("/api/v2/location/region/{region}/routes", handlers.ListRoutes)

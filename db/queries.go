@@ -509,6 +509,66 @@ func GetRoutesByRegion(ctx context.Context, region string) ([]string, error) {
 	return routes, nil
 }
 
+func GetRoutesByRegionAndGame(ctx context.Context, region, game string) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT route_name FROM location_encounters
+		WHERE LOWER(region) = LOWER($1) AND $2 = ANY(games)
+		ORDER BY route_name
+	`, region, game)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var routes []string
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			return nil, err
+		}
+		routes = append(routes, r)
+	}
+	return routes, nil
+}
+
+func GetLocationEncountersByGame(ctx context.Context, region, routeName, game string) ([]models.LocationEncounter, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day
+		FROM location_encounters
+		WHERE LOWER(region) = LOWER($1) AND LOWER(route_name) = LOWER($2) AND $3 = ANY(games)
+		ORDER BY pokemon_name
+	`, region, routeName, game)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var encounters []models.LocationEncounter
+	for rows.Next() {
+		var e models.LocationEncounter
+		if err := rows.Scan(&e.Region, &e.RouteName, &e.PokemonName, &e.Games, &e.EncounterMethod, &e.Rarity, &e.LevelRange, &e.TimeOfDay); err != nil {
+			return nil, err
+		}
+		encounters = append(encounters, e)
+	}
+	return encounters, nil
+}
+
+func GetAllEncounterGames(ctx context.Context) ([]string, error) {
+	rows, err := Pool.Query(ctx, `SELECT DISTINCT unnest(games) AS game FROM location_encounters ORDER BY game`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var games []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		games = append(games, g)
+	}
+	return games, nil
+}
+
 // --- Berry queries ---
 
 func GetAllBerries(ctx context.Context) ([]models.Berry, error) {

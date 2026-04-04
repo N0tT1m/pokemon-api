@@ -7,7 +7,6 @@ WORKDIR /app
 
 COPY . .
 
-ENV SCRAPY_SETTINGS_MODULE=pokemondb_scraper.settings
 RUN dos2unix entrypoint.sh && chmod +x entrypoint.sh
 
 ENTRYPOINT ["./entrypoint.sh"]
