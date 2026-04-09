@@ -83,16 +83,21 @@ type ItemDetail struct {
 }
 
 type MoveDetail struct {
-	Name         string  `json:"name"`
-	Type         *string `json:"type"`
-	Category     *string `json:"category"`
-	Power        *int    `json:"power"`
-	Accuracy     *int    `json:"accuracy"`
-	PP           *int    `json:"pp"`
-	Effect       *string `json:"effect"`
-	EffectChance *int    `json:"effect_chance"`
-	Priority     *int    `json:"priority"`
-	Target       *string `json:"target"`
+	Name                  string   `json:"name"`
+	Type                  *string  `json:"type"`
+	Category              *string  `json:"category"`
+	Power                 *int     `json:"power"`
+	Accuracy              *int     `json:"accuracy"`
+	PP                    *int     `json:"pp"`
+	Effect                *string  `json:"effect"`
+	EffectChance          *int     `json:"effect_chance"`
+	Priority              *int     `json:"priority"`
+	Target                *string  `json:"target"`
+	GenerationIntroduced  *int     `json:"generation_introduced"`
+	ZMoveEquivalent       *string  `json:"z_move_equivalent"`
+	MaxMoveEquivalent     *string  `json:"max_move_equivalent"`
+	ContestType           *string  `json:"contest_type"`
+	Flags                 []string `json:"flags"`
 }
 
 type PokemonForm struct {
@@ -227,4 +232,118 @@ type RaidCounter struct {
 	CounterPokemon string  `json:"counter_pokemon"`
 	Rank           *int    `json:"rank"`
 	Notes          *string `json:"notes"`
+}
+
+type PokemonClassification struct {
+	PokemonName          string  `json:"pokemon_name"`
+	GenerationIntroduced *int    `json:"generation_introduced"`
+	IsLegendary          bool    `json:"is_legendary"`
+	IsMythical           bool    `json:"is_mythical"`
+	IsUltraBeast         bool    `json:"is_ultra_beast"`
+	IsBaby               bool    `json:"is_baby"`
+	IsParadox            bool    `json:"is_paradox"`
+	Color                *string `json:"color"`
+	Shape                *string `json:"shape"`
+	Habitat              *string `json:"habitat"`
+}
+
+type ZMove struct {
+	Name      string  `json:"name"`
+	Type      *string `json:"type"`
+	Power     *int    `json:"power"`
+	Effect    *string `json:"effect"`
+	BaseMove  *string `json:"base_move"`
+	Category  *string `json:"category"`
+}
+
+type InGameTrade struct {
+	Game             string  `json:"game"`
+	Location         *string `json:"location"`
+	OfferedPokemon   string  `json:"offered_pokemon"`
+	OfferedLevel     *int    `json:"offered_level"`
+	OfferedItem      *string `json:"offered_item"`
+	RequestedPokemon string  `json:"requested_pokemon"`
+	NpcName          *string `json:"npc_name"`
+	Notes            *string `json:"notes"`
+}
+
+type ContestStat struct {
+	PokemonName string `json:"pokemon_name"`
+	ContestType string `json:"contest_type"`
+	Appeal      *int   `json:"appeal"`
+	Jam         *int   `json:"jam"`
+}
+
+type EventPokemon struct {
+	Name               string   `json:"name"`
+	Game               *string  `json:"game"`
+	Year               *int     `json:"year"`
+	Level              *int     `json:"level"`
+	HeldItem           *string  `json:"held_item"`
+	Moves              []string `json:"moves"`
+	OtName             *string  `json:"ot_name"`
+	DistributionMethod *string  `json:"distribution_method"`
+	Notes              *string  `json:"notes"`
+}
+
+type MassOutbreak struct {
+	Game        string  `json:"game"`
+	Region      *string `json:"region"`
+	Location    *string `json:"location"`
+	PokemonName string  `json:"pokemon_name"`
+	Notes       *string `json:"notes"`
+}
+
+type PokemonGo struct {
+	PokemonName     string `json:"pokemon_name"`
+	MaxCP           *int   `json:"max_cp"`
+	BuddyDistanceKm *int   `json:"buddy_distance_km"`
+	BaseAttack      *int   `json:"base_attack"`
+	BaseDefense     *int   `json:"base_defense"`
+	BaseStamina     *int   `json:"base_stamina"`
+	ShinyAvailable  bool   `json:"shiny_available"`
+	ShadowAvailable bool   `json:"shadow_available"`
+}
+
+type BattleFacility struct {
+	Name         string  `json:"name"`
+	Game         string  `json:"game"`
+	Region       *string `json:"region"`
+	FacilityType *string `json:"facility_type"`
+	Description  *string `json:"description"`
+	Currency     *string `json:"currency"`
+}
+
+type MoveTutorLocation struct {
+	MoveName string  `json:"move_name"`
+	Game     string  `json:"game"`
+	Location *string `json:"location"`
+	Cost     *string `json:"cost"`
+}
+
+type VersionExclusive struct {
+	PokemonName string  `json:"pokemon_name"`
+	Game        string  `json:"game"`
+	GamePair    *string `json:"game_pair"`
+}
+
+type Trainer struct {
+	Name           string  `json:"name"`
+	Game           string  `json:"game"`
+	Role           *string `json:"role"`
+	SpecialtyType  *string `json:"specialty_type"`
+	Location       *string `json:"location"`
+	BattleVariant  string  `json:"battle_variant"`
+}
+
+type TrainerPokemon struct {
+	TrainerName   string   `json:"trainer_name"`
+	Game          string   `json:"game"`
+	BattleVariant string   `json:"battle_variant"`
+	PokemonName   string   `json:"pokemon_name"`
+	Level         *int     `json:"level"`
+	HeldItem      *string  `json:"held_item"`
+	Ability       *string  `json:"ability"`
+	Moves         []string `json:"moves"`
+	TeamOrder     int      `json:"team_order"`
 }

@@ -937,6 +937,254 @@ func GetEggMoveParents(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// --- Classification ---
+
+// GET /api/v2/pokemon/{identifier}/classification
+func GetPokemonClassification(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+	c, err := db.GetPokemonClassification(r.Context(), p.Name)
+	if err != nil {
+		writeError(w, 404, "Classification not found")
+		return
+	}
+	writeJSON(w, 200, c)
+}
+
+// --- Z-Moves ---
+
+// GET /api/v2/z-move
+func ListZMoves(w http.ResponseWriter, r *http.Request) {
+	moves, err := db.GetAllZMoves(r.Context())
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if moves == nil {
+		moves = []models.ZMove{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(moves),
+		"results": moves,
+	})
+}
+
+// GET /api/v2/z-move/{name}
+func GetZMove(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	displayName := strings.ReplaceAll(name, "-", " ")
+	z, err := db.GetZMoveByName(r.Context(), displayName)
+	if err != nil {
+		z, err = db.GetZMoveByName(r.Context(), name)
+		if err != nil {
+			writeError(w, 404, "Z-Move not found")
+			return
+		}
+	}
+	writeJSON(w, 200, z)
+}
+
+// --- In-Game Trades ---
+
+// GET /api/v2/in-game-trades?game=X
+func ListInGameTrades(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	trades, err := db.GetAllInGameTrades(r.Context(), game)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if trades == nil {
+		trades = []models.InGameTrade{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(trades),
+		"results": trades,
+	})
+}
+
+// --- Contest Stats ---
+
+// GET /api/v2/pokemon/{identifier}/contest-stats
+func GetPokemonContestStats(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+	stats, err := db.GetContestStats(r.Context(), p.Name)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if stats == nil {
+		stats = []models.ContestStat{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"pokemon_name": p.Name,
+		"contest_stats": stats,
+	})
+}
+
+// --- Event Pokemon ---
+
+// GET /api/v2/event-pokemon?name=X&game=X
+func ListEventPokemon(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	game := r.URL.Query().Get("game")
+	events, err := db.GetAllEventPokemon(r.Context(), name, game)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if events == nil {
+		events = []models.EventPokemon{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(events),
+		"results": events,
+	})
+}
+
+// --- Mass Outbreaks ---
+
+// GET /api/v2/mass-outbreaks?game=X&region=X
+func ListMassOutbreaks(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	region := r.URL.Query().Get("region")
+	outbreaks, err := db.GetAllMassOutbreaks(r.Context(), game, region)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if outbreaks == nil {
+		outbreaks = []models.MassOutbreak{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(outbreaks),
+		"results": outbreaks,
+	})
+}
+
+// --- Pokemon GO ---
+
+// GET /api/v2/pokemon/{identifier}/go
+func GetPokemonGoStats(w http.ResponseWriter, r *http.Request) {
+	p, err := lookupPokemon(r)
+	if err != nil {
+		writeError(w, 404, "Pokemon not found")
+		return
+	}
+	g, err := db.GetPokemonGo(r.Context(), p.Name)
+	if err != nil {
+		writeError(w, 404, "Pokemon GO data not found")
+		return
+	}
+	writeJSON(w, 200, g)
+}
+
+// --- Battle Facilities ---
+
+// GET /api/v2/battle-facility?game=X
+func ListBattleFacilities(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	facilities, err := db.GetAllBattleFacilities(r.Context(), game)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if facilities == nil {
+		facilities = []models.BattleFacility{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(facilities),
+		"results": facilities,
+	})
+}
+
+// --- Move Tutors ---
+
+// GET /api/v2/move-tutor?game=X&move=X
+func ListMoveTutors(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	move := r.URL.Query().Get("move")
+	tutors, err := db.GetAllMoveTutorLocations(r.Context(), game, move)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if tutors == nil {
+		tutors = []models.MoveTutorLocation{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(tutors),
+		"results": tutors,
+	})
+}
+
+// --- Version Exclusives ---
+
+// GET /api/v2/version-exclusive?game=X&game_pair=X
+func ListVersionExclusives(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	gamePair := r.URL.Query().Get("game_pair")
+	exclusives, err := db.GetAllVersionExclusives(r.Context(), game, gamePair)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if exclusives == nil {
+		exclusives = []models.VersionExclusive{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(exclusives),
+		"results": exclusives,
+	})
+}
+
+// --- Trainers ---
+
+// GET /api/v2/trainer?game=X&role=X
+func ListTrainers(w http.ResponseWriter, r *http.Request) {
+	game := r.URL.Query().Get("game")
+	role := r.URL.Query().Get("role")
+	trainers, err := db.GetAllTrainers(r.Context(), game, role)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if trainers == nil {
+		trainers = []models.Trainer{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(trainers),
+		"results": trainers,
+	})
+}
+
+// GET /api/v2/trainer/{name}/team?game=X&variant=X
+func GetTrainerTeam(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	game := r.URL.Query().Get("game")
+	variant := r.URL.Query().Get("variant")
+	pokemon, err := db.GetTrainerPokemon(r.Context(), name, game, variant)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if pokemon == nil {
+		pokemon = []models.TrainerPokemon{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"trainer_name": name,
+		"count":        len(pokemon),
+		"results":      pokemon,
+	})
+}
+
 // --- helpers ---
 
 func romanNumeral(n int) string {

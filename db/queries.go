@@ -283,7 +283,8 @@ func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDet
 		return nil, 0, err
 	}
 	rows, err := Pool.Query(ctx, `
-		SELECT name, type, category, power, accuracy, pp, effect, effect_chance, priority, target
+		SELECT name, type, category, power, accuracy, pp, effect, effect_chance, priority, target,
+		       generation_introduced, z_move_equivalent, max_move_equivalent, contest_type, flags
 		FROM move_details ORDER BY name LIMIT $1 OFFSET $2
 	`, limit, offset)
 	if err != nil {
@@ -293,7 +294,8 @@ func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDet
 	var moves []models.MoveDetail
 	for rows.Next() {
 		var m models.MoveDetail
-		if err := rows.Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance, &m.Priority, &m.Target); err != nil {
+		if err := rows.Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance, &m.Priority, &m.Target,
+			&m.GenerationIntroduced, &m.ZMoveEquivalent, &m.MaxMoveEquivalent, &m.ContestType, &m.Flags); err != nil {
 			return nil, 0, err
 		}
 		moves = append(moves, m)
@@ -304,9 +306,11 @@ func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDet
 func GetMoveDetailByName(ctx context.Context, name string) (*models.MoveDetail, error) {
 	m := &models.MoveDetail{}
 	err := Pool.QueryRow(ctx, `
-		SELECT name, type, category, power, accuracy, pp, effect, effect_chance, priority, target
+		SELECT name, type, category, power, accuracy, pp, effect, effect_chance, priority, target,
+		       generation_introduced, z_move_equivalent, max_move_equivalent, contest_type, flags
 		FROM move_details WHERE LOWER(name) = LOWER($1)
-	`, name).Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance, &m.Priority, &m.Target)
+	`, name).Scan(&m.Name, &m.Type, &m.Category, &m.Power, &m.Accuracy, &m.PP, &m.Effect, &m.EffectChance, &m.Priority, &m.Target,
+		&m.GenerationIntroduced, &m.ZMoveEquivalent, &m.MaxMoveEquivalent, &m.ContestType, &m.Flags)
 	if err != nil {
 		return nil, err
 	}
@@ -1053,4 +1057,336 @@ func GetPokemonBiologyText(ctx context.Context, pokemonName string) (*models.Pok
 		return nil, err
 	}
 	return b, nil
+}
+
+// --- Classification queries ---
+
+func GetPokemonClassification(ctx context.Context, pokemonName string) (*models.PokemonClassification, error) {
+	c := &models.PokemonClassification{}
+	err := Pool.QueryRow(ctx, `
+		SELECT pokemon_name, generation_introduced, is_legendary, is_mythical, is_ultra_beast, is_baby, is_paradox, color, shape, habitat
+		FROM pokemon_classification WHERE LOWER(pokemon_name) = LOWER($1)
+	`, pokemonName).Scan(&c.PokemonName, &c.GenerationIntroduced, &c.IsLegendary, &c.IsMythical, &c.IsUltraBeast, &c.IsBaby, &c.IsParadox, &c.Color, &c.Shape, &c.Habitat)
+	if err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// --- Z-Move queries ---
+
+func GetAllZMoves(ctx context.Context) ([]models.ZMove, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT name, type, power, effect, base_move, category FROM z_moves ORDER BY name
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var moves []models.ZMove
+	for rows.Next() {
+		var z models.ZMove
+		if err := rows.Scan(&z.Name, &z.Type, &z.Power, &z.Effect, &z.BaseMove, &z.Category); err != nil {
+			return nil, err
+		}
+		moves = append(moves, z)
+	}
+	return moves, nil
+}
+
+func GetZMoveByName(ctx context.Context, name string) (*models.ZMove, error) {
+	z := &models.ZMove{}
+	err := Pool.QueryRow(ctx, `
+		SELECT name, type, power, effect, base_move, category FROM z_moves WHERE LOWER(name) = LOWER($1)
+	`, name).Scan(&z.Name, &z.Type, &z.Power, &z.Effect, &z.BaseMove, &z.Category)
+	if err != nil {
+		return nil, err
+	}
+	return z, nil
+}
+
+// --- In-game trade queries ---
+
+func GetAllInGameTrades(ctx context.Context, game string) ([]models.InGameTrade, error) {
+	query := `SELECT game, location, offered_pokemon, offered_level, offered_item, requested_pokemon, npc_name, notes FROM in_game_trades`
+	args := []any{}
+	if game != "" {
+		query += " WHERE LOWER(game) = LOWER($1)"
+		args = append(args, game)
+	}
+	query += " ORDER BY game, offered_pokemon"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var trades []models.InGameTrade
+	for rows.Next() {
+		var t models.InGameTrade
+		if err := rows.Scan(&t.Game, &t.Location, &t.OfferedPokemon, &t.OfferedLevel, &t.OfferedItem, &t.RequestedPokemon, &t.NpcName, &t.Notes); err != nil {
+			return nil, err
+		}
+		trades = append(trades, t)
+	}
+	return trades, nil
+}
+
+// --- Contest stat queries ---
+
+func GetContestStats(ctx context.Context, pokemonName string) ([]models.ContestStat, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT pokemon_name, contest_type, appeal, jam FROM contest_stats WHERE LOWER(pokemon_name) = LOWER($1) ORDER BY contest_type
+	`, pokemonName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var stats []models.ContestStat
+	for rows.Next() {
+		var s models.ContestStat
+		if err := rows.Scan(&s.PokemonName, &s.ContestType, &s.Appeal, &s.Jam); err != nil {
+			return nil, err
+		}
+		stats = append(stats, s)
+	}
+	return stats, nil
+}
+
+// --- Event Pokemon queries ---
+
+func GetAllEventPokemon(ctx context.Context, name, game string) ([]models.EventPokemon, error) {
+	query := `SELECT name, game, year, level, held_item, moves, ot_name, distribution_method, notes FROM event_pokemon`
+	args := []any{}
+	conditions := []string{}
+	if name != "" {
+		args = append(args, name)
+		conditions = append(conditions, fmt.Sprintf("LOWER(name) = LOWER($%d)", len(args)))
+	}
+	if game != "" {
+		args = append(args, game)
+		conditions = append(conditions, fmt.Sprintf("LOWER(game) = LOWER($%d)", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY name, year"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []models.EventPokemon
+	for rows.Next() {
+		var e models.EventPokemon
+		if err := rows.Scan(&e.Name, &e.Game, &e.Year, &e.Level, &e.HeldItem, &e.Moves, &e.OtName, &e.DistributionMethod, &e.Notes); err != nil {
+			return nil, err
+		}
+		events = append(events, e)
+	}
+	return events, nil
+}
+
+// --- Mass outbreak queries ---
+
+func GetAllMassOutbreaks(ctx context.Context, game, region string) ([]models.MassOutbreak, error) {
+	query := `SELECT game, region, location, pokemon_name, notes FROM mass_outbreaks`
+	args := []any{}
+	conditions := []string{}
+	if game != "" {
+		args = append(args, game)
+		conditions = append(conditions, fmt.Sprintf("LOWER(game) = LOWER($%d)", len(args)))
+	}
+	if region != "" {
+		args = append(args, region)
+		conditions = append(conditions, fmt.Sprintf("LOWER(region) = LOWER($%d)", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY game, region, pokemon_name"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var outbreaks []models.MassOutbreak
+	for rows.Next() {
+		var o models.MassOutbreak
+		if err := rows.Scan(&o.Game, &o.Region, &o.Location, &o.PokemonName, &o.Notes); err != nil {
+			return nil, err
+		}
+		outbreaks = append(outbreaks, o)
+	}
+	return outbreaks, nil
+}
+
+// --- Pokemon GO queries ---
+
+func GetPokemonGo(ctx context.Context, pokemonName string) (*models.PokemonGo, error) {
+	g := &models.PokemonGo{}
+	err := Pool.QueryRow(ctx, `
+		SELECT pokemon_name, max_cp, buddy_distance_km, base_attack, base_defense, base_stamina, shiny_available, shadow_available
+		FROM pokemon_go WHERE LOWER(pokemon_name) = LOWER($1)
+	`, pokemonName).Scan(&g.PokemonName, &g.MaxCP, &g.BuddyDistanceKm, &g.BaseAttack, &g.BaseDefense, &g.BaseStamina, &g.ShinyAvailable, &g.ShadowAvailable)
+	if err != nil {
+		return nil, err
+	}
+	return g, nil
+}
+
+// --- Battle facility queries ---
+
+func GetAllBattleFacilities(ctx context.Context, game string) ([]models.BattleFacility, error) {
+	query := `SELECT name, game, region, facility_type, description, currency FROM battle_facilities`
+	args := []any{}
+	if game != "" {
+		query += " WHERE LOWER(game) = LOWER($1)"
+		args = append(args, game)
+	}
+	query += " ORDER BY game, name"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var facilities []models.BattleFacility
+	for rows.Next() {
+		var f models.BattleFacility
+		if err := rows.Scan(&f.Name, &f.Game, &f.Region, &f.FacilityType, &f.Description, &f.Currency); err != nil {
+			return nil, err
+		}
+		facilities = append(facilities, f)
+	}
+	return facilities, nil
+}
+
+// --- Move tutor queries ---
+
+func GetAllMoveTutorLocations(ctx context.Context, game, moveName string) ([]models.MoveTutorLocation, error) {
+	query := `SELECT move_name, game, location, cost FROM move_tutor_locations`
+	args := []any{}
+	conditions := []string{}
+	if game != "" {
+		args = append(args, game)
+		conditions = append(conditions, fmt.Sprintf("LOWER(game) = LOWER($%d)", len(args)))
+	}
+	if moveName != "" {
+		args = append(args, moveName)
+		conditions = append(conditions, fmt.Sprintf("LOWER(move_name) = LOWER($%d)", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY move_name, game"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tutors []models.MoveTutorLocation
+	for rows.Next() {
+		var t models.MoveTutorLocation
+		if err := rows.Scan(&t.MoveName, &t.Game, &t.Location, &t.Cost); err != nil {
+			return nil, err
+		}
+		tutors = append(tutors, t)
+	}
+	return tutors, nil
+}
+
+// --- Version exclusive queries ---
+
+func GetAllVersionExclusives(ctx context.Context, game, gamePair string) ([]models.VersionExclusive, error) {
+	query := `SELECT pokemon_name, game, game_pair FROM version_exclusives`
+	args := []any{}
+	conditions := []string{}
+	if game != "" {
+		args = append(args, game)
+		conditions = append(conditions, fmt.Sprintf("LOWER(game) = LOWER($%d)", len(args)))
+	}
+	if gamePair != "" {
+		args = append(args, gamePair)
+		conditions = append(conditions, fmt.Sprintf("LOWER(game_pair) = LOWER($%d)", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY game_pair, game, pokemon_name"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var exclusives []models.VersionExclusive
+	for rows.Next() {
+		var v models.VersionExclusive
+		if err := rows.Scan(&v.PokemonName, &v.Game, &v.GamePair); err != nil {
+			return nil, err
+		}
+		exclusives = append(exclusives, v)
+	}
+	return exclusives, nil
+}
+
+// --- Trainer queries ---
+
+func GetAllTrainers(ctx context.Context, game, role string) ([]models.Trainer, error) {
+	query := `SELECT name, game, role, specialty_type, location, battle_variant FROM trainers`
+	args := []any{}
+	conditions := []string{}
+	if game != "" {
+		args = append(args, game)
+		conditions = append(conditions, fmt.Sprintf("LOWER(game) = LOWER($%d)", len(args)))
+	}
+	if role != "" {
+		args = append(args, role)
+		conditions = append(conditions, fmt.Sprintf("LOWER(role) = LOWER($%d)", len(args)))
+	}
+	if len(conditions) > 0 {
+		query += " WHERE " + strings.Join(conditions, " AND ")
+	}
+	query += " ORDER BY game, name, battle_variant"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var trainers []models.Trainer
+	for rows.Next() {
+		var t models.Trainer
+		if err := rows.Scan(&t.Name, &t.Game, &t.Role, &t.SpecialtyType, &t.Location, &t.BattleVariant); err != nil {
+			return nil, err
+		}
+		trainers = append(trainers, t)
+	}
+	return trainers, nil
+}
+
+func GetTrainerPokemon(ctx context.Context, trainerName, game, battleVariant string) ([]models.TrainerPokemon, error) {
+	query := `SELECT trainer_name, game, battle_variant, pokemon_name, level, held_item, ability, moves, team_order
+	          FROM trainer_pokemon WHERE LOWER(trainer_name) = LOWER($1)`
+	args := []any{trainerName}
+	if game != "" {
+		args = append(args, game)
+		query += fmt.Sprintf(" AND LOWER(game) = LOWER($%d)", len(args))
+	}
+	if battleVariant != "" {
+		args = append(args, battleVariant)
+		query += fmt.Sprintf(" AND LOWER(battle_variant) = LOWER($%d)", len(args))
+	}
+	query += " ORDER BY game, battle_variant, team_order"
+	rows, err := Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var pokemon []models.TrainerPokemon
+	for rows.Next() {
+		var p models.TrainerPokemon
+		if err := rows.Scan(&p.TrainerName, &p.Game, &p.BattleVariant, &p.PokemonName, &p.Level, &p.HeldItem, &p.Ability, &p.Moves, &p.TeamOrder); err != nil {
+			return nil, err
+		}
+		pokemon = append(pokemon, p)
+	}
+	return pokemon, nil
 }

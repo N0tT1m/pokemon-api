@@ -34,6 +34,7 @@ func main() {
 	r.Get("/api/v2/pokemon-species/{identifier}", handlers.GetPokemonSpecies)
 	r.Get("/api/v2/evolution-chain/{id}", handlers.GetEvolutionChain)
 	r.Get("/api/v2/type/{identifier}", handlers.GetType)
+	r.Get("/api/v2/generation/{id}", handlers.GetGeneration)
 
 	// PokeAPI-compatible pokedex endpoints
 	r.Get("/api/v2/version-group/{name}", handlers.GetVersionGroup)
@@ -82,6 +83,37 @@ func main() {
 	r.Get("/api/v2/news/raids", handlers.ListRaids)
 	r.Get("/api/v2/news/raids/active", handlers.ListActiveRaids)
 	r.Get("/api/v2/news/raids/{pokemon}", handlers.GetRaidByPokemon)
+
+	// Classification, GO stats, contest stats
+	r.Get("/api/v2/pokemon/{identifier}/classification", handlers.GetPokemonClassification)
+	r.Get("/api/v2/pokemon/{identifier}/go", handlers.GetPokemonGoStats)
+	r.Get("/api/v2/pokemon/{identifier}/contest-stats", handlers.GetPokemonContestStats)
+
+	// Z-Moves
+	r.Get("/api/v2/z-move", handlers.ListZMoves)
+	r.Get("/api/v2/z-move/{name}", handlers.GetZMove)
+
+	// In-game trades (?game=X)
+	r.Get("/api/v2/in-game-trades", handlers.ListInGameTrades)
+
+	// Event Pokemon (?name=X&game=X)
+	r.Get("/api/v2/event-pokemon", handlers.ListEventPokemon)
+
+	// Mass outbreaks (?game=X&region=X)
+	r.Get("/api/v2/mass-outbreaks", handlers.ListMassOutbreaks)
+
+	// Battle facilities (?game=X)
+	r.Get("/api/v2/battle-facility", handlers.ListBattleFacilities)
+
+	// Move tutors (?game=X&move=X)
+	r.Get("/api/v2/move-tutor", handlers.ListMoveTutors)
+
+	// Version exclusives (?game=X&game_pair=X)
+	r.Get("/api/v2/version-exclusive", handlers.ListVersionExclusives)
+
+	// Trainers (?game=X&role=X) and trainer teams
+	r.Get("/api/v2/trainer", handlers.ListTrainers)
+	r.Get("/api/v2/trainer/{name}/team", handlers.GetTrainerTeam)
 
 	port := os.Getenv("PORT")
 	if port == "" {

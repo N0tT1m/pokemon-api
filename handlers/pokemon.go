@@ -238,6 +238,66 @@ func GetEvolutionChain(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Generation national dex ranges.
+var generationRanges = []struct {
+	ID     int
+	Name   string
+	Region string
+	Start  int
+	End    int
+}{
+	{1, "generation-i", "kanto", 1, 151},
+	{2, "generation-ii", "johto", 152, 251},
+	{3, "generation-iii", "hoenn", 252, 386},
+	{4, "generation-iv", "sinnoh", 387, 493},
+	{5, "generation-v", "unova", 494, 649},
+	{6, "generation-vi", "kalos", 650, 721},
+	{7, "generation-vii", "alola", 722, 809},
+	{8, "generation-viii", "galar", 810, 905},
+	{9, "generation-ix", "paldea", 906, 1025},
+}
+
+// GET /api/v2/generation/{id}
+func GetGeneration(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id < 1 || id > len(generationRanges) {
+		writeError(w, 404, "Generation not found")
+		return
+	}
+	gen := generationRanges[id-1]
+
+	// Fetch Pokemon in this generation's national dex range
+	entries, _, err := db.GetAllPokemon(r.Context(), 2000, 0)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+
+	pokemonSpecies := []map[string]any{}
+	for _, e := range entries {
+		numID := 0
+		if e.NationalNo != nil {
+			numID, _ = strconv.Atoi(strings.TrimLeft(*e.NationalNo, "0"))
+		}
+		if numID >= gen.Start && numID <= gen.End {
+			pokemonSpecies = append(pokemonSpecies, map[string]any{
+				"name": strings.ToLower(e.Name),
+				"url":  "/api/v2/pokemon-species/" + strconv.Itoa(numID) + "/",
+			})
+		}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"id":   gen.ID,
+		"name": gen.Name,
+		"main_region": map[string]any{
+			"name": gen.Region,
+		},
+		"pokemon_species": pokemonSpecies,
+	})
+}
+
 // GET /api/v2/pokemon/{identifier}/encounters
 func GetPokemonEncounters(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)
