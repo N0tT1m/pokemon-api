@@ -4,7 +4,7 @@ set -e
 cd /app
 
 echo "=== Running Pokemon scraper ==="
-scrapy crawl pokemondb_pokemon -L ERROR
+scrapy crawl pokemondb_pokemon --nolog -L WARNING
 echo "=== Pokemon data synced ==="
 
 echo "=== Running Regional Dex scraper ==="

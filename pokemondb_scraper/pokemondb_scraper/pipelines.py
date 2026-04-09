@@ -406,9 +406,11 @@ CREATE TABLE IF NOT EXISTS mass_outbreaks (
     region       TEXT,
     location     TEXT,
     pokemon_name TEXT NOT NULL,
-    notes        TEXT,
-    UNIQUE(game, pokemon_name, COALESCE(location, ''))
+    notes        TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS mass_outbreaks_unique
+    ON mass_outbreaks (game, pokemon_name, COALESCE(location, ''));
 
 CREATE TABLE IF NOT EXISTS pokemon_go (
     id                SERIAL PRIMARY KEY,
@@ -438,9 +440,11 @@ CREATE TABLE IF NOT EXISTS move_tutor_locations (
     move_name TEXT NOT NULL,
     game      TEXT NOT NULL,
     location  TEXT,
-    cost      TEXT,
-    UNIQUE(move_name, game, COALESCE(location, ''))
+    cost      TEXT
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS move_tutor_locations_unique
+    ON move_tutor_locations (move_name, game, COALESCE(location, ''));
 
 CREATE TABLE IF NOT EXISTS version_exclusives (
     id           SERIAL PRIMARY KEY,
