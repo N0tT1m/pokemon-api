@@ -30,6 +30,18 @@ from pokemondb_scraper.items import (
     RaidCounterItem,
     PokemonFormItem,
     EggMovePokemonItem,
+    TrainerItem,
+    TrainerPokemonItem,
+    PokemonClassificationItem,
+    ZMoveItem,
+    InGameTradeItem,
+    ContestStatItem,
+    EventPokemonItem,
+    MassOutbreakItem,
+    PokemonGoItem,
+    BattleFacilityItem,
+    MoveTutorLocationItem,
+    VersionExclusiveItem,
 )
 
 SCHEMA_SQL = """
@@ -325,6 +337,149 @@ CREATE TABLE IF NOT EXISTS egg_move_parents (
     parent_name  TEXT NOT NULL,
     UNIQUE(pokemon_name, move_name, parent_name)
 );
+
+CREATE TABLE IF NOT EXISTS pokemon_classification (
+    id                   SERIAL PRIMARY KEY,
+    pokemon_name         TEXT NOT NULL UNIQUE,
+    generation_introduced INTEGER,
+    is_legendary         BOOLEAN NOT NULL DEFAULT FALSE,
+    is_mythical          BOOLEAN NOT NULL DEFAULT FALSE,
+    is_ultra_beast       BOOLEAN NOT NULL DEFAULT FALSE,
+    is_baby              BOOLEAN NOT NULL DEFAULT FALSE,
+    is_paradox           BOOLEAN NOT NULL DEFAULT FALSE,
+    color                TEXT,
+    shape                TEXT,
+    habitat              TEXT
+);
+
+CREATE TABLE IF NOT EXISTS z_moves (
+    id        SERIAL PRIMARY KEY,
+    name      TEXT NOT NULL UNIQUE,
+    type      TEXT,
+    power     INTEGER,
+    effect    TEXT,
+    base_move TEXT,
+    category  TEXT
+);
+
+CREATE TABLE IF NOT EXISTS in_game_trades (
+    id                SERIAL PRIMARY KEY,
+    game              TEXT NOT NULL,
+    location          TEXT,
+    offered_pokemon   TEXT NOT NULL,
+    offered_level     INTEGER,
+    offered_item      TEXT,
+    requested_pokemon TEXT NOT NULL,
+    npc_name          TEXT,
+    notes             TEXT,
+    UNIQUE(game, offered_pokemon, requested_pokemon)
+);
+
+CREATE TABLE IF NOT EXISTS contest_stats (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL,
+    contest_type TEXT NOT NULL,
+    appeal       INTEGER,
+    jam          INTEGER,
+    UNIQUE(pokemon_name, contest_type)
+);
+
+CREATE TABLE IF NOT EXISTS event_pokemon (
+    id                  SERIAL PRIMARY KEY,
+    name                TEXT NOT NULL,
+    game                TEXT,
+    year                INTEGER,
+    level               INTEGER,
+    held_item           TEXT,
+    moves               TEXT[],
+    ot_name             TEXT,
+    distribution_method TEXT,
+    notes               TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS event_pokemon_unique
+    ON event_pokemon (name, COALESCE(game, ''), COALESCE(ot_name, ''), COALESCE(year::TEXT, ''));
+
+CREATE TABLE IF NOT EXISTS mass_outbreaks (
+    id           SERIAL PRIMARY KEY,
+    game         TEXT NOT NULL,
+    region       TEXT,
+    location     TEXT,
+    pokemon_name TEXT NOT NULL,
+    notes        TEXT,
+    UNIQUE(game, pokemon_name, COALESCE(location, ''))
+);
+
+CREATE TABLE IF NOT EXISTS pokemon_go (
+    id                SERIAL PRIMARY KEY,
+    pokemon_name      TEXT NOT NULL UNIQUE,
+    max_cp            INTEGER,
+    buddy_distance_km INTEGER,
+    base_attack       INTEGER,
+    base_defense      INTEGER,
+    base_stamina      INTEGER,
+    shiny_available   BOOLEAN NOT NULL DEFAULT FALSE,
+    shadow_available  BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS battle_facilities (
+    id            SERIAL PRIMARY KEY,
+    name          TEXT NOT NULL,
+    game          TEXT NOT NULL,
+    region        TEXT,
+    facility_type TEXT,
+    description   TEXT,
+    currency      TEXT,
+    UNIQUE(name, game)
+);
+
+CREATE TABLE IF NOT EXISTS move_tutor_locations (
+    id        SERIAL PRIMARY KEY,
+    move_name TEXT NOT NULL,
+    game      TEXT NOT NULL,
+    location  TEXT,
+    cost      TEXT,
+    UNIQUE(move_name, game, COALESCE(location, ''))
+);
+
+CREATE TABLE IF NOT EXISTS version_exclusives (
+    id           SERIAL PRIMARY KEY,
+    pokemon_name TEXT NOT NULL,
+    game         TEXT NOT NULL,
+    game_pair    TEXT,
+    UNIQUE(pokemon_name, game)
+);
+
+ALTER TABLE move_details ADD COLUMN IF NOT EXISTS generation_introduced INTEGER;
+ALTER TABLE move_details ADD COLUMN IF NOT EXISTS z_move_equivalent     TEXT;
+ALTER TABLE move_details ADD COLUMN IF NOT EXISTS max_move_equivalent   TEXT;
+ALTER TABLE move_details ADD COLUMN IF NOT EXISTS contest_type          TEXT;
+ALTER TABLE move_details ADD COLUMN IF NOT EXISTS flags                 TEXT[];
+
+CREATE TABLE IF NOT EXISTS trainers (
+    id              SERIAL PRIMARY KEY,
+    name            TEXT NOT NULL,
+    game            TEXT NOT NULL,
+    role            TEXT,
+    specialty_type  TEXT,
+    location        TEXT,
+    battle_variant  TEXT NOT NULL DEFAULT 'First Battle',
+    UNIQUE(name, game, battle_variant)
+);
+
+CREATE TABLE IF NOT EXISTS trainer_pokemon (
+    id              SERIAL PRIMARY KEY,
+    trainer_name    TEXT NOT NULL,
+    game            TEXT NOT NULL,
+    battle_variant  TEXT NOT NULL DEFAULT 'First Battle',
+    pokemon_name    TEXT NOT NULL,
+    level           INTEGER,
+    held_item       TEXT,
+    ability         TEXT,
+    moves           TEXT[],
+    team_order      INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(trainer_name, game, battle_variant, team_order)
+);
 """
 
 
@@ -407,6 +562,30 @@ class PostgresPipeline:
             self._upsert_pokemon_form(adapter)
         elif isinstance(item, EggMovePokemonItem):
             self._upsert_egg_move_parent(adapter)
+        elif isinstance(item, TrainerItem):
+            self._upsert_trainer(adapter)
+        elif isinstance(item, TrainerPokemonItem):
+            self._upsert_trainer_pokemon(adapter)
+        elif isinstance(item, PokemonClassificationItem):
+            self._upsert_pokemon_classification(adapter)
+        elif isinstance(item, ZMoveItem):
+            self._upsert_z_move(adapter)
+        elif isinstance(item, InGameTradeItem):
+            self._upsert_in_game_trade(adapter)
+        elif isinstance(item, ContestStatItem):
+            self._upsert_contest_stat(adapter)
+        elif isinstance(item, EventPokemonItem):
+            self._upsert_event_pokemon(adapter)
+        elif isinstance(item, MassOutbreakItem):
+            self._upsert_mass_outbreak(adapter)
+        elif isinstance(item, PokemonGoItem):
+            self._upsert_pokemon_go(adapter)
+        elif isinstance(item, BattleFacilityItem):
+            self._upsert_battle_facility(adapter)
+        elif isinstance(item, MoveTutorLocationItem):
+            self._upsert_move_tutor_location(adapter)
+        elif isinstance(item, VersionExclusiveItem):
+            self._upsert_version_exclusive(adapter)
 
         self.conn.commit()
         return item
@@ -508,20 +687,35 @@ class PostgresPipeline:
         """, dict(a))
 
     def _upsert_move_detail(self, a):
+        d = dict(a)
+        d.setdefault('generation_introduced', None)
+        d.setdefault('z_move_equivalent', None)
+        d.setdefault('max_move_equivalent', None)
+        d.setdefault('contest_type', None)
+        d.setdefault('flags', None)
         self.cur.execute("""
-            INSERT INTO move_details (name, type, category, power, accuracy, pp, effect, effect_chance, priority, target)
-            VALUES (%(name)s, %(type)s, %(category)s, %(power)s, %(accuracy)s, %(pp)s, %(effect)s, %(effect_chance)s, %(priority)s, %(target)s)
+            INSERT INTO move_details (name, type, category, power, accuracy, pp, effect, effect_chance,
+                                      priority, target, generation_introduced, z_move_equivalent,
+                                      max_move_equivalent, contest_type, flags)
+            VALUES (%(name)s, %(type)s, %(category)s, %(power)s, %(accuracy)s, %(pp)s, %(effect)s,
+                    %(effect_chance)s, %(priority)s, %(target)s, %(generation_introduced)s,
+                    %(z_move_equivalent)s, %(max_move_equivalent)s, %(contest_type)s, %(flags)s)
             ON CONFLICT (name) DO UPDATE SET
-                type          = EXCLUDED.type,
-                category      = EXCLUDED.category,
-                power         = EXCLUDED.power,
-                accuracy      = EXCLUDED.accuracy,
-                pp            = EXCLUDED.pp,
-                effect        = EXCLUDED.effect,
-                effect_chance = EXCLUDED.effect_chance,
-                priority      = COALESCE(EXCLUDED.priority, move_details.priority),
-                target        = COALESCE(EXCLUDED.target,   move_details.target)
-        """, dict(a))
+                type                 = EXCLUDED.type,
+                category             = EXCLUDED.category,
+                power                = EXCLUDED.power,
+                accuracy             = EXCLUDED.accuracy,
+                pp                   = EXCLUDED.pp,
+                effect               = EXCLUDED.effect,
+                effect_chance        = EXCLUDED.effect_chance,
+                priority             = COALESCE(EXCLUDED.priority,              move_details.priority),
+                target               = COALESCE(EXCLUDED.target,                move_details.target),
+                generation_introduced = COALESCE(EXCLUDED.generation_introduced, move_details.generation_introduced),
+                z_move_equivalent    = COALESCE(EXCLUDED.z_move_equivalent,     move_details.z_move_equivalent),
+                max_move_equivalent  = COALESCE(EXCLUDED.max_move_equivalent,   move_details.max_move_equivalent),
+                contest_type         = COALESCE(EXCLUDED.contest_type,          move_details.contest_type),
+                flags                = COALESCE(EXCLUDED.flags,                 move_details.flags)
+        """, d)
 
     def _upsert_ability_detail(self, a):
         self.cur.execute("""
@@ -692,4 +886,152 @@ class PostgresPipeline:
             INSERT INTO egg_move_parents (pokemon_name, move_name, parent_name)
             VALUES (%(pokemon_name)s, %(move_name)s, %(parent_name)s)
             ON CONFLICT (pokemon_name, move_name, parent_name) DO NOTHING
+        """, dict(a))
+
+    def _upsert_trainer(self, a):
+        self.cur.execute("""
+            INSERT INTO trainers (name, game, role, specialty_type, location, battle_variant)
+            VALUES (%(name)s, %(game)s, %(role)s, %(specialty_type)s, %(location)s, %(battle_variant)s)
+            ON CONFLICT (name, game, battle_variant) DO UPDATE SET
+                role           = COALESCE(EXCLUDED.role,           trainers.role),
+                specialty_type = COALESCE(EXCLUDED.specialty_type, trainers.specialty_type),
+                location       = COALESCE(EXCLUDED.location,       trainers.location)
+        """, dict(a))
+
+    def _upsert_trainer_pokemon(self, a):
+        self.cur.execute("""
+            INSERT INTO trainer_pokemon
+                (trainer_name, game, battle_variant, pokemon_name, level, held_item, ability, moves, team_order)
+            VALUES
+                (%(trainer_name)s, %(game)s, %(battle_variant)s, %(pokemon_name)s,
+                 %(level)s, %(held_item)s, %(ability)s, %(moves)s, %(team_order)s)
+            ON CONFLICT (trainer_name, game, battle_variant, team_order) DO UPDATE SET
+                pokemon_name = EXCLUDED.pokemon_name,
+                level        = EXCLUDED.level,
+                held_item    = COALESCE(EXCLUDED.held_item, trainer_pokemon.held_item),
+                ability      = COALESCE(EXCLUDED.ability,   trainer_pokemon.ability),
+                moves        = COALESCE(EXCLUDED.moves,     trainer_pokemon.moves)
+        """, dict(a))
+
+    def _upsert_pokemon_classification(self, a):
+        self.cur.execute("""
+            INSERT INTO pokemon_classification
+                (pokemon_name, generation_introduced, is_legendary, is_mythical, is_ultra_beast,
+                 is_baby, is_paradox, color, shape, habitat)
+            VALUES
+                (%(pokemon_name)s, %(generation_introduced)s, %(is_legendary)s, %(is_mythical)s,
+                 %(is_ultra_beast)s, %(is_baby)s, %(is_paradox)s, %(color)s, %(shape)s, %(habitat)s)
+            ON CONFLICT (pokemon_name) DO UPDATE SET
+                generation_introduced = COALESCE(EXCLUDED.generation_introduced, pokemon_classification.generation_introduced),
+                is_legendary  = EXCLUDED.is_legendary  OR pokemon_classification.is_legendary,
+                is_mythical   = EXCLUDED.is_mythical   OR pokemon_classification.is_mythical,
+                is_ultra_beast = EXCLUDED.is_ultra_beast OR pokemon_classification.is_ultra_beast,
+                is_baby       = EXCLUDED.is_baby       OR pokemon_classification.is_baby,
+                is_paradox    = EXCLUDED.is_paradox    OR pokemon_classification.is_paradox,
+                color         = COALESCE(EXCLUDED.color,   pokemon_classification.color),
+                shape         = COALESCE(EXCLUDED.shape,   pokemon_classification.shape),
+                habitat       = COALESCE(EXCLUDED.habitat, pokemon_classification.habitat)
+        """, dict(a))
+
+    def _upsert_z_move(self, a):
+        self.cur.execute("""
+            INSERT INTO z_moves (name, type, power, effect, base_move, category)
+            VALUES (%(name)s, %(type)s, %(power)s, %(effect)s, %(base_move)s, %(category)s)
+            ON CONFLICT (name) DO UPDATE SET
+                type      = EXCLUDED.type,
+                power     = COALESCE(EXCLUDED.power,     z_moves.power),
+                effect    = COALESCE(EXCLUDED.effect,    z_moves.effect),
+                base_move = COALESCE(EXCLUDED.base_move, z_moves.base_move),
+                category  = COALESCE(EXCLUDED.category,  z_moves.category)
+        """, dict(a))
+
+    def _upsert_in_game_trade(self, a):
+        self.cur.execute("""
+            INSERT INTO in_game_trades
+                (game, location, offered_pokemon, offered_level, offered_item, requested_pokemon, npc_name, notes)
+            VALUES
+                (%(game)s, %(location)s, %(offered_pokemon)s, %(offered_level)s, %(offered_item)s,
+                 %(requested_pokemon)s, %(npc_name)s, %(notes)s)
+            ON CONFLICT (game, offered_pokemon, requested_pokemon) DO UPDATE SET
+                location      = COALESCE(EXCLUDED.location,      in_game_trades.location),
+                offered_level = COALESCE(EXCLUDED.offered_level, in_game_trades.offered_level),
+                offered_item  = COALESCE(EXCLUDED.offered_item,  in_game_trades.offered_item),
+                npc_name      = COALESCE(EXCLUDED.npc_name,      in_game_trades.npc_name),
+                notes         = COALESCE(EXCLUDED.notes,         in_game_trades.notes)
+        """, dict(a))
+
+    def _upsert_contest_stat(self, a):
+        self.cur.execute("""
+            INSERT INTO contest_stats (pokemon_name, contest_type, appeal, jam)
+            VALUES (%(pokemon_name)s, %(contest_type)s, %(appeal)s, %(jam)s)
+            ON CONFLICT (pokemon_name, contest_type) DO UPDATE SET
+                appeal = COALESCE(EXCLUDED.appeal, contest_stats.appeal),
+                jam    = COALESCE(EXCLUDED.jam,    contest_stats.jam)
+        """, dict(a))
+
+    def _upsert_event_pokemon(self, a):
+        self.cur.execute("""
+            INSERT INTO event_pokemon (name, game, year, level, held_item, moves, ot_name, distribution_method, notes)
+            VALUES (%(name)s, %(game)s, %(year)s, %(level)s, %(held_item)s, %(moves)s,
+                    %(ot_name)s, %(distribution_method)s, %(notes)s)
+            ON CONFLICT (name, COALESCE(game, ''), COALESCE(ot_name, ''), COALESCE(year::TEXT, '')) DO UPDATE SET
+                level               = COALESCE(EXCLUDED.level,               event_pokemon.level),
+                held_item           = COALESCE(EXCLUDED.held_item,           event_pokemon.held_item),
+                moves               = COALESCE(EXCLUDED.moves,               event_pokemon.moves),
+                distribution_method = COALESCE(EXCLUDED.distribution_method, event_pokemon.distribution_method),
+                notes               = COALESCE(EXCLUDED.notes,               event_pokemon.notes)
+        """, dict(a))
+
+    def _upsert_mass_outbreak(self, a):
+        self.cur.execute("""
+            INSERT INTO mass_outbreaks (game, region, location, pokemon_name, notes)
+            VALUES (%(game)s, %(region)s, %(location)s, %(pokemon_name)s, %(notes)s)
+            ON CONFLICT (game, pokemon_name, COALESCE(location, '')) DO UPDATE SET
+                region = COALESCE(EXCLUDED.region, mass_outbreaks.region),
+                notes  = COALESCE(EXCLUDED.notes,  mass_outbreaks.notes)
+        """, dict(a))
+
+    def _upsert_pokemon_go(self, a):
+        self.cur.execute("""
+            INSERT INTO pokemon_go
+                (pokemon_name, max_cp, buddy_distance_km, base_attack, base_defense, base_stamina,
+                 shiny_available, shadow_available)
+            VALUES
+                (%(pokemon_name)s, %(max_cp)s, %(buddy_distance_km)s, %(base_attack)s,
+                 %(base_defense)s, %(base_stamina)s, %(shiny_available)s, %(shadow_available)s)
+            ON CONFLICT (pokemon_name) DO UPDATE SET
+                max_cp            = COALESCE(EXCLUDED.max_cp,            pokemon_go.max_cp),
+                buddy_distance_km = COALESCE(EXCLUDED.buddy_distance_km, pokemon_go.buddy_distance_km),
+                base_attack       = COALESCE(EXCLUDED.base_attack,       pokemon_go.base_attack),
+                base_defense      = COALESCE(EXCLUDED.base_defense,      pokemon_go.base_defense),
+                base_stamina      = COALESCE(EXCLUDED.base_stamina,      pokemon_go.base_stamina),
+                shiny_available   = EXCLUDED.shiny_available  OR pokemon_go.shiny_available,
+                shadow_available  = EXCLUDED.shadow_available OR pokemon_go.shadow_available
+        """, dict(a))
+
+    def _upsert_battle_facility(self, a):
+        self.cur.execute("""
+            INSERT INTO battle_facilities (name, game, region, facility_type, description, currency)
+            VALUES (%(name)s, %(game)s, %(region)s, %(facility_type)s, %(description)s, %(currency)s)
+            ON CONFLICT (name, game) DO UPDATE SET
+                region        = COALESCE(EXCLUDED.region,        battle_facilities.region),
+                facility_type = COALESCE(EXCLUDED.facility_type, battle_facilities.facility_type),
+                description   = COALESCE(EXCLUDED.description,   battle_facilities.description),
+                currency      = COALESCE(EXCLUDED.currency,      battle_facilities.currency)
+        """, dict(a))
+
+    def _upsert_move_tutor_location(self, a):
+        self.cur.execute("""
+            INSERT INTO move_tutor_locations (move_name, game, location, cost)
+            VALUES (%(move_name)s, %(game)s, %(location)s, %(cost)s)
+            ON CONFLICT (move_name, game, COALESCE(location, '')) DO UPDATE SET
+                cost = COALESCE(EXCLUDED.cost, move_tutor_locations.cost)
+        """, dict(a))
+
+    def _upsert_version_exclusive(self, a):
+        self.cur.execute("""
+            INSERT INTO version_exclusives (pokemon_name, game, game_pair)
+            VALUES (%(pokemon_name)s, %(game)s, %(game_pair)s)
+            ON CONFLICT (pokemon_name, game) DO UPDATE SET
+                game_pair = COALESCE(EXCLUDED.game_pair, version_exclusives.game_pair)
         """, dict(a))

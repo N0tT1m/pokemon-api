@@ -12,6 +12,11 @@ REGIONS = {
     'galar': 'Galar',
     'hisui': 'Hisui',
     'paldea': 'Paldea',
+    'lumiose': 'Lumiose City',      # Legends: Z-A Wild Zones
+    'isle-of-armor': 'Isle of Armor',   # Sword/Shield DLC
+    'crown-tundra': 'Crown Tundra',     # Sword/Shield DLC
+    'kitakami': 'Kitakami',             # Scarlet/Violet DLC (The Teal Mask)
+    'blueberry-academy': 'Blueberry Academy',  # Scarlet/Violet DLC (The Indigo Disk)
 }
 
 
