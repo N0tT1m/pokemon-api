@@ -1412,3 +1412,92 @@ func GetTrainerPokemon(ctx context.Context, trainerName, game, battleVariant str
 	}
 	return pokemon, nil
 }
+
+// EVTarget represents a Pokemon that yields EVs in a given stat, with location info.
+type EVTarget struct {
+	PokemonName string  `json:"pokemon_name"`
+	EVYield     string  `json:"ev_yield"`
+	YieldAmount int     `json:"yield_amount"`
+	Game        string  `json:"game"`
+	Location    string  `json:"location"`
+	Method      *string `json:"method"`
+}
+
+// GetEVTargetsByStat returns Pokemon that yield EVs in the given stat,
+// optionally filtered by game. stat values: "hp","attack","defense","sp-atk","sp-def","speed".
+func GetEVTargetsByStat(ctx context.Context, stat string, game string) ([]EVTarget, error) {
+	statKeywords := map[string]string{
+		"hp":      "HP",
+		"attack":  "Attack",
+		"defense": "Defense",
+		"sp-atk":  "Sp. Atk",
+		"sp-def":  "Sp. Def",
+		"speed":   "Speed",
+	}
+	keyword, ok := statKeywords[strings.ToLower(stat)]
+	if !ok {
+		return nil, fmt.Errorf("unknown stat: %s", stat)
+	}
+
+	var rows interface {
+		Next() bool
+		Scan(...any) error
+		Close()
+	}
+	var err error
+
+	if game != "" {
+		rows, err = Pool.Query(ctx, `
+			SELECT p.name, p.ev_yield, gl.game, gl.location, gl.method
+			FROM pokemon p
+			JOIN pokemon_game_locations gl ON LOWER(gl.pokemon_name) = LOWER(p.name)
+			WHERE p.ev_yield ILIKE $1
+			  AND gl.game = $2
+			ORDER BY
+				CAST(split_part(trim(p.ev_yield), ' ', 1) AS INTEGER) DESC,
+				p.name, gl.location
+		`, "%"+keyword+"%", game)
+	} else {
+		rows, err = Pool.Query(ctx, `
+			SELECT p.name, p.ev_yield, gl.game, gl.location, gl.method
+			FROM pokemon p
+			JOIN pokemon_game_locations gl ON LOWER(gl.pokemon_name) = LOWER(p.name)
+			WHERE p.ev_yield ILIKE $1
+			ORDER BY
+				CAST(split_part(trim(p.ev_yield), ' ', 1) AS INTEGER) DESC,
+				p.name, gl.game, gl.location
+		`, "%"+keyword+"%")
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	parseYield := func(evYield string) int {
+		for _, part := range strings.Split(evYield, ",") {
+			part = strings.TrimSpace(part)
+			if !strings.Contains(strings.ToLower(part), strings.ToLower(keyword)) {
+				continue
+			}
+			fields := strings.Fields(part)
+			if len(fields) >= 1 {
+				var n int
+				if _, scanErr := fmt.Sscan(fields[0], &n); scanErr == nil {
+					return n
+				}
+			}
+		}
+		return 1
+	}
+
+	var targets []EVTarget
+	for rows.Next() {
+		var t EVTarget
+		if scanErr := rows.Scan(&t.PokemonName, &t.EVYield, &t.Game, &t.Location, &t.Method); scanErr != nil {
+			return nil, scanErr
+		}
+		t.YieldAmount = parseYield(t.EVYield)
+		targets = append(targets, t)
+	}
+	return targets, nil
+}

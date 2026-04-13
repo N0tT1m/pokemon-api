@@ -7,6 +7,10 @@ echo "=== Running Pokemon scraper ==="
 scrapy crawl pokemondb_pokemon --nolog -L WARNING
 echo "=== Pokemon data synced ==="
 
+echo "=== Running Egg Move Parents scraper ==="
+scrapy crawl pokemondb_egg_moves --nolog -L WARNING
+echo "=== Egg move parents synced ==="
+
 echo "=== Running Regional Dex scraper ==="
 scrapy crawl pokemondb_regional_dex --nolog -L WARNING
 echo "=== Regional dex data synced ==="

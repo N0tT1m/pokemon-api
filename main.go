@@ -28,6 +28,8 @@ func main() {
 	// PokeAPI-compatible endpoints
 	r.Get("/api/v2/pokemon", handlers.ListPokemon)
 	r.Get("/api/v2/pokemon/competitive", handlers.ListPokemonCompetitive)
+	// Static sub-paths must come before /{identifier}
+	r.Get("/api/v2/pokemon/ev-targets", handlers.GetEVTargets)
 	r.Get("/api/v2/pokemon/{identifier}", handlers.GetPokemon)
 	r.Get("/api/v2/pokemon/{identifier}/encounters", handlers.GetPokemonEncounters)
 	r.Get("/api/v2/pokemon/{identifier}/moves", handlers.GetPokemonMoves)

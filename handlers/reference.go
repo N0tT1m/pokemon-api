@@ -1185,6 +1185,34 @@ func GetTrainerTeam(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// --- EV Targets ---
+
+// GET /api/v2/pokemon/ev-targets?stat=hp&game=Sword/Shield
+func GetEVTargets(w http.ResponseWriter, r *http.Request) {
+	stat := strings.ToLower(r.URL.Query().Get("stat"))
+	game := r.URL.Query().Get("game")
+
+	if stat == "" {
+		writeError(w, 400, "stat query parameter required (hp, attack, defense, sp-atk, sp-def, speed)")
+		return
+	}
+
+	targets, err := db.GetEVTargetsByStat(r.Context(), stat, game)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if targets == nil {
+		targets = []db.EVTarget{}
+	}
+	writeJSON(w, 200, map[string]any{
+		"stat":    stat,
+		"game":    game,
+		"count":   len(targets),
+		"results": targets,
+	})
+}
+
 // --- helpers ---
 
 func romanNumeral(n int) string {
