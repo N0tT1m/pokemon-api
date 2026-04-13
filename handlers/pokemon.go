@@ -168,6 +168,19 @@ func GetPokemon(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, resp)
 }
 
+// GET /api/v2/pokemon/competitive
+func ListPokemonCompetitive(w http.ResponseWriter, r *http.Request) {
+	entries, err := db.GetAllPokemonCompetitive(r.Context())
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if entries == nil {
+		entries = []models.CompetitivePokemon{}
+	}
+	writeJSON(w, 200, map[string]any{"pokemon": entries, "count": len(entries)})
+}
+
 // GET /api/v2/pokemon-species/{identifier}
 func GetPokemonSpecies(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)

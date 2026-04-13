@@ -27,6 +27,7 @@ func main() {
 
 	// PokeAPI-compatible endpoints
 	r.Get("/api/v2/pokemon", handlers.ListPokemon)
+	r.Get("/api/v2/pokemon/competitive", handlers.ListPokemonCompetitive)
 	r.Get("/api/v2/pokemon/{identifier}", handlers.GetPokemon)
 	r.Get("/api/v2/pokemon/{identifier}/encounters", handlers.GetPokemonEncounters)
 	r.Get("/api/v2/pokemon/{identifier}/moves", handlers.GetPokemonMoves)
@@ -127,6 +128,19 @@ func main() {
 	}
 	if keyFile == "" {
 		keyFile = "/app/certs/privkey.pem"
+	}
+
+	httpPort := os.Getenv("PORT_HTTP")
+	if httpPort == "" {
+		httpPort = "157"
+	}
+	if httpPort != "off" {
+		go func() {
+			log.Printf("Starting HTTP server on :%s", httpPort)
+			if err := http.ListenAndServe(":"+httpPort, r); err != nil {
+				log.Printf("HTTP server error: %v", err)
+			}
+		}()
 	}
 
 	log.Printf("Starting HTTPS server on :%s", port)

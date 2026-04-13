@@ -235,6 +235,28 @@ func GetAllPokemon(ctx context.Context, limit, offset int) ([]models.PokemonList
 	return entries, total, nil
 }
 
+func GetAllPokemonCompetitive(ctx context.Context) ([]models.CompetitivePokemon, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT name, national_no, types, abilities, hp, attack, defense, sp_atk, sp_def, speed, total
+		FROM pokemon ORDER BY national_no
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []models.CompetitivePokemon
+	for rows.Next() {
+		var p models.CompetitivePokemon
+		if err := rows.Scan(&p.Name, &p.NationalNo, &p.Types, &p.Abilities,
+			&p.HP, &p.Attack, &p.Defense, &p.SpAtk, &p.SpDef, &p.Speed, &p.Total); err != nil {
+			return nil, err
+		}
+		entries = append(entries, p)
+	}
+	return entries, nil
+}
+
 // --- Item queries ---
 
 func GetAllItems(ctx context.Context, limit, offset int) ([]models.ItemDetail, int, error) {

@@ -247,6 +247,20 @@ type PokemonClassification struct {
 	Habitat              *string `json:"habitat"`
 }
 
+type CompetitivePokemon struct {
+	Name       string   `json:"name"`
+	NationalNo *string  `json:"national_no"`
+	Types      []string `json:"types"`
+	Abilities  []string `json:"abilities"`
+	HP         *int     `json:"hp"`
+	Attack     *int     `json:"attack"`
+	Defense    *int     `json:"defense"`
+	SpAtk      *int     `json:"sp_atk"`
+	SpDef      *int     `json:"sp_def"`
+	Speed      *int     `json:"speed"`
+	Total      *int     `json:"total"`
+}
+
 type ZMove struct {
 	Name      string  `json:"name"`
 	Type      *string `json:"type"`
