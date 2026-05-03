@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/N0tT1m/pokemon-api/db"
 	"github.com/N0tT1m/pokemon-api/handlers"
@@ -28,7 +32,6 @@ func main() {
 	// PokeAPI-compatible endpoints
 	r.Get("/api/v2/pokemon", handlers.ListPokemon)
 	r.Get("/api/v2/pokemon/competitive", handlers.ListPokemonCompetitive)
-	// Static sub-paths must come before /{identifier}
 	r.Get("/api/v2/pokemon/ev-targets", handlers.GetEVTargets)
 	r.Get("/api/v2/pokemon/{identifier}", handlers.GetPokemon)
 	r.Get("/api/v2/pokemon/{identifier}/encounters", handlers.GetPokemonEncounters)
@@ -36,8 +39,23 @@ func main() {
 	r.Get("/api/v2/pokemon/{identifier}/type-defenses", handlers.GetPokemonTypeDefenses)
 	r.Get("/api/v2/pokemon-species/{identifier}", handlers.GetPokemonSpecies)
 	r.Get("/api/v2/evolution-chain/{id}", handlers.GetEvolutionChain)
+	r.Get("/api/v2/type", handlers.ListTypes)
 	r.Get("/api/v2/type/{identifier}", handlers.GetType)
+	r.Get("/api/v2/type/{identifier}/names", handlers.GetTypeNames)
+	r.Get("/api/v2/item/{identifier}/names", handlers.GetItemNames)
+	r.Get("/api/v2/move/{identifier}/names", handlers.GetMoveNames)
+	r.Get("/api/v2/ability/{identifier}/names", handlers.GetAbilityNames)
 	r.Get("/api/v2/generation/{id}", handlers.GetGeneration)
+
+	// Classification & egg-group filters
+	r.Get("/api/v2/pokemon-color", handlers.ListPokemonColors)
+	r.Get("/api/v2/pokemon-color/{color}", handlers.GetPokemonColor)
+	r.Get("/api/v2/pokemon-shape", handlers.ListPokemonShapes)
+	r.Get("/api/v2/pokemon-shape/{shape}", handlers.GetPokemonShape)
+	r.Get("/api/v2/pokemon-habitat", handlers.ListPokemonHabitats)
+	r.Get("/api/v2/pokemon-habitat/{habitat}", handlers.GetPokemonHabitat)
+	r.Get("/api/v2/egg-group", handlers.ListEggGroups)
+	r.Get("/api/v2/egg-group/{name}", handlers.GetEggGroup)
 
 	// PokeAPI-compatible pokedex endpoints
 	r.Get("/api/v2/version-group/{name}", handlers.GetVersionGroup)
@@ -136,17 +154,54 @@ func main() {
 	if httpPort == "" {
 		httpPort = "157"
 	}
+
+	newServer := func(addr string) *http.Server {
+		return &http.Server{
+			Addr:              addr,
+			Handler:           r,
+			ReadHeaderTimeout: 10 * time.Second,
+			ReadTimeout:       30 * time.Second,
+			WriteTimeout:      60 * time.Second,
+			IdleTimeout:       120 * time.Second,
+		}
+	}
+
+	tlsSrv := newServer(":" + port)
+	var httpSrv *http.Server
 	if httpPort != "off" {
+		httpSrv = newServer(":" + httpPort)
 		go func() {
 			log.Printf("Starting HTTP server on :%s", httpPort)
-			if err := http.ListenAndServe(":"+httpPort, r); err != nil {
+			if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				log.Printf("HTTP server error: %v", err)
 			}
 		}()
 	}
 
-	log.Printf("Starting HTTPS server on :%s", port)
-	log.Fatal(http.ListenAndServeTLS(":"+port, certFile, keyFile, r))
+	go func() {
+		log.Printf("Starting HTTPS server on :%s", port)
+		if err := tlsSrv.ListenAndServeTLS(certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("HTTPS server error: %v", err)
+		}
+	}()
+
+	// Graceful shutdown on SIGINT / SIGTERM
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	<-sigCh
+	log.Println("Shutdown signal received, draining connections...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := tlsSrv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTPS shutdown error: %v", err)
+	}
+	if httpSrv != nil {
+		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP shutdown error: %v", err)
+		}
+	}
+	log.Println("Shutdown complete")
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

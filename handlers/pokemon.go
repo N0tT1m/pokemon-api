@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -20,6 +21,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// writeServerError logs the underlying error server-side and returns a generic
+// 500 to the client. Use this for unexpected DB/internal failures — never
+// surface raw error strings since they leak schema details.
+func writeServerError(w http.ResponseWriter, r *http.Request, err error) {
+	log.Printf("error handling %s %s: %v", r.Method, r.URL.Path, err)
+	writeError(w, 500, "internal server error")
 }
 
 // lookupPokemon resolves an identifier (name or national dex number) to a Pokemon.
@@ -43,7 +52,7 @@ func ListPokemon(w http.ResponseWriter, r *http.Request) {
 
 	entries, total, err := db.GetAllPokemon(r.Context(), limit, offset)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -145,6 +154,16 @@ func GetPokemon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	pokeIdentifier := toAPIName(p.Name)
+	pastTypes, _ := db.GetPastTypes(r.Context(), pokeIdentifier)
+	if pastTypes == nil {
+		pastTypes = []models.PastTypeEntry{}
+	}
+	pastAbilities, _ := db.GetPastAbilities(r.Context(), pokeIdentifier)
+	if pastAbilities == nil {
+		pastAbilities = []models.PastAbilityEntry{}
+	}
+
 	spriteID := strconv.Itoa(id)
 	resp := map[string]any{
 		"id":              id,
@@ -163,6 +182,12 @@ func GetPokemon(w http.ResponseWriter, r *http.Request) {
 				},
 			},
 		},
+		"cries": map[string]any{
+			"latest": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/" + spriteID + ".ogg",
+			"legacy": "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/legacy/" + spriteID + ".ogg",
+		},
+		"past_types":     pastTypes,
+		"past_abilities": pastAbilities,
 	}
 
 	writeJSON(w, 200, resp)
@@ -172,7 +197,7 @@ func GetPokemon(w http.ResponseWriter, r *http.Request) {
 func ListPokemonCompetitive(w http.ResponseWriter, r *http.Request) {
 	entries, err := db.GetAllPokemonCompetitive(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if entries == nil {
@@ -283,7 +308,7 @@ func GetGeneration(w http.ResponseWriter, r *http.Request) {
 	// Fetch Pokemon in this generation's national dex range
 	entries, _, err := db.GetAllPokemon(r.Context(), 2000, 0)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -346,13 +371,13 @@ func GetGamePokedex(w http.ResponseWriter, r *http.Request) {
 func ListGames(w http.ResponseWriter, r *http.Request) {
 	games, err := db.GetAllGames(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"games": games})
 }
 
-// GET /api/v2/pokemon/{identifier}/moves
+// GET /api/v2/pokemon/{identifier}/moves[?version_group=X]
 func GetPokemonMoves(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)
 	if err != nil {
@@ -360,7 +385,13 @@ func GetPokemonMoves(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	moves, _ := db.GetMoves(r.Context(), p.Name)
+	vg := strings.TrimSpace(r.URL.Query().Get("version_group"))
+	var moves []models.Move
+	if vg != "" {
+		moves, _ = db.MovesByVersionGroup(r.Context(), toAPIName(p.Name), vg)
+	} else {
+		moves, _ = db.GetMoves(r.Context(), p.Name)
+	}
 	if moves == nil {
 		moves = []models.Move{}
 	}

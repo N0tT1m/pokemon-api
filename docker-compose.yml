@@ -53,5 +53,18 @@ services:
     profiles:
       - crawl
 
+  csv-loader:
+    build:
+      context: ./pokeapi_csv_loader
+    environment:
+      DATABASE_URI: postgresql://pokedex:pokedex@db:5432/pokedex
+    networks:
+      - pokedex_net
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles:
+      - csv-load
+
 volumes:
   pgdata:

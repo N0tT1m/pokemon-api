@@ -281,6 +281,42 @@ type InGameTrade struct {
 	Notes            *string `json:"notes"`
 }
 
+type PastTypeEntry struct {
+	Generation int      `json:"generation"`
+	Types      []string `json:"types"`
+}
+
+type PastAbilityEntry struct {
+	Generation int                  `json:"generation"`
+	Abilities  []PastAbilityAbility `json:"abilities"`
+}
+
+type PastAbilityAbility struct {
+	Slot     int     `json:"slot"`
+	Ability  *string `json:"ability"`
+	IsHidden bool    `json:"is_hidden"`
+}
+
+type MoveMeta struct {
+	Ailment       *string `json:"ailment"`
+	AilmentChance *int    `json:"ailment_chance"`
+	FlinchChance  *int    `json:"flinch_chance"`
+	CritRate      *int    `json:"crit_rate"`
+	Drain         *int    `json:"drain"`
+	Healing       *int    `json:"healing"`
+	StatChance    *int    `json:"stat_chance"`
+	MinHits       *int    `json:"min_hits"`
+	MaxHits       *int    `json:"max_hits"`
+	MinTurns      *int    `json:"min_turns"`
+	MaxTurns      *int    `json:"max_turns"`
+	Category      *string `json:"category"`
+}
+
+type MoveStatChange struct {
+	Stat   string `json:"stat"`
+	Change int    `json:"change"`
+}
+
 type ContestStat struct {
 	PokemonName string `json:"pokemon_name"`
 	ContestType string `json:"contest_type"`

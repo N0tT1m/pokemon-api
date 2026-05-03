@@ -9,32 +9,59 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// Mapping from PokeAPI-style version-group slugs to our DB game names.
-var versionGroupToGame = map[string][]string{
-	"red-blue":                        {"Red/Blue/Yellow"},
-	"yellow":                          {"Red/Blue/Yellow"},
-	"gold-silver":                     {"Gold/Silver/Crystal"},
-	"crystal":                         {"Gold/Silver/Crystal"},
-	"ruby-sapphire":                   {"Ruby/Sapphire/Emerald"},
-	"emerald":                         {"Ruby/Sapphire/Emerald"},
-	"firered-leafgreen":               {"FireRed/LeafGreen"},
-	"diamond-pearl":                   {"Diamond/Pearl"},
-	"platinum":                        {"Platinum"},
-	"heartgold-soulsilver":            {"HeartGold/SoulSilver"},
-	"black-white":                     {"Black/White"},
-	"black-2-white-2":                 {"Black 2/White 2"},
-	"x-y":                             {"X/Y"},
-	"omega-ruby-alpha-sapphire":       {"Omega Ruby/Alpha Sapphire"},
-	"sun-moon":                        {"Sun/Moon"},
-	"ultra-sun-ultra-moon":            {"Ultra Sun/Ultra Moon"},
-	"lets-go-pikachu-lets-go-eevee":   {"Let's Go Pikachu/Eevee"},
-	"sword-shield":                    {"Sword/Shield"},
-	"brilliant-diamond-shining-pearl": {"Brilliant Diamond/Shining Pearl"},
-	"legends-arceus":                  {"Legends: Arceus"},
-	"scarlet-violet":                  {"Scarlet/Violet"},
-	"the-teal-mask":                   {"The Teal Mask"},
-	"the-indigo-disk":                 {"The Indigo Disk"},
-	"legends-z-a":                     {"Legends: Z-A"},
+// gameMapping is the canonical record for a single DB game name. The
+// VersionGroups and Regions fields list every PokeAPI-style slug that should
+// resolve to this game. Adding a new game means appending one entry here —
+// the lookup maps below are derived in init().
+type gameMapping struct {
+	Game          string
+	VersionGroups []string
+	Regions       []string
+}
+
+var gameMappings = []gameMapping{
+	{"Red/Blue/Yellow", []string{"red-blue", "yellow"}, []string{"kanto"}},
+	{"Gold/Silver/Crystal", []string{"gold-silver", "crystal"}, []string{"original-johto"}},
+	{"Ruby/Sapphire/Emerald", []string{"ruby-sapphire", "emerald"}, []string{"hoenn"}},
+	{"FireRed/LeafGreen", []string{"firered-leafgreen"}, nil},
+	{"Diamond/Pearl", []string{"diamond-pearl"}, []string{"original-sinnoh"}},
+	{"Platinum", []string{"platinum"}, []string{"extended-sinnoh"}},
+	{"HeartGold/SoulSilver", []string{"heartgold-soulsilver"}, nil},
+	{"Black/White", []string{"black-white"}, []string{"original-unova"}},
+	{"Black 2/White 2", []string{"black-2-white-2"}, []string{"updated-unova"}},
+	{"X/Y", []string{"x-y"}, []string{"kalos-central", "kalos-coastal", "kalos-mountain"}},
+	{"Omega Ruby/Alpha Sapphire", []string{"omega-ruby-alpha-sapphire"}, nil},
+	{"Sun/Moon", []string{"sun-moon"}, []string{"original-alola"}},
+	{"Ultra Sun/Ultra Moon", []string{"ultra-sun-ultra-moon"}, []string{"updated-alola"}},
+	{"Let's Go Pikachu/Eevee", []string{"lets-go-pikachu-lets-go-eevee"}, nil},
+	{"Sword/Shield", []string{"sword-shield"}, []string{"galar", "isle-of-armor", "crown-tundra"}},
+	{"Brilliant Diamond/Shining Pearl", []string{"brilliant-diamond-shining-pearl"}, nil},
+	{"Legends: Arceus", []string{"legends-arceus"}, []string{"hisui"}},
+	{"Scarlet/Violet", []string{"scarlet-violet"}, []string{"paldea"}},
+	{"The Teal Mask", []string{"the-teal-mask"}, []string{"kitakami"}},
+	{"The Indigo Disk", []string{"the-indigo-disk"}, []string{"blueberry"}},
+	{"Legends: Z-A", []string{"legends-z-a"}, nil},
+}
+
+// Derived lookups, populated in init().
+var (
+	versionGroupToGame = map[string][]string{}
+	regionToGame       = map[string]string{}
+	dexSlugToGame      = map[string]string{}
+)
+
+func init() {
+	for _, m := range gameMappings {
+		dexSlug := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(m.Game, " ", "-"), "/", "-"))
+		dexSlugToGame[dexSlug] = m.Game
+		for _, vg := range m.VersionGroups {
+			versionGroupToGame[vg] = []string{m.Game}
+			dexSlugToGame[vg] = m.Game
+		}
+		for _, region := range m.Regions {
+			regionToGame[region] = m.Game
+		}
+	}
 }
 
 // Pokedex name registry: maps pokedex ID/name to the game + dex type.
@@ -126,7 +153,7 @@ func GetPokedex(w http.ResponseWriter, r *http.Request) {
 		// Full national dex from pokemon table
 		entries, _, err := db.GetAllPokemon(r.Context(), 2000, 0)
 		if err != nil {
-			writeError(w, 500, err.Error())
+			writeServerError(w, r, err)
 			return
 		}
 		pokemonEntries := make([]map[string]any, len(entries))
@@ -184,40 +211,14 @@ func GetPokedex(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Mapping from PokeAPI regional-dex names to our DB game names.
-var regionToGame = map[string]string{
-	"kanto":            "Red/Blue/Yellow",
-	"original-johto":   "Gold/Silver/Crystal",
-	"hoenn":            "Ruby/Sapphire/Emerald",
-	"original-sinnoh":  "Diamond/Pearl",
-	"extended-sinnoh":  "Platinum",
-	"original-unova":   "Black/White",
-	"updated-unova":    "Black 2/White 2",
-	"kalos-central":    "X/Y",
-	"kalos-coastal":    "X/Y",
-	"kalos-mountain":   "X/Y",
-	"original-alola":   "Sun/Moon",
-	"updated-alola":    "Ultra Sun/Ultra Moon",
-	"galar":            "Sword/Shield",
-	"isle-of-armor":    "Sword/Shield",
-	"crown-tundra":     "Sword/Shield",
-	"hisui":            "Legends: Arceus",
-	"paldea":           "Scarlet/Violet",
-	"kitakami":         "The Teal Mask",
-	"blueberry":        "The Indigo Disk",
-}
-
+// slugToGameName resolves any region, version-group, or dex slug to a DB game
+// name. All three lookup maps are derived from gameMappings in init().
 func slugToGameName(slug string) string {
-	// Check region names first (e.g. "kanto", "galar", "paldea")
 	if game, ok := regionToGame[slug]; ok {
 		return game
 	}
-
-	for vgSlug, games := range versionGroupToGame {
-		dexSlug := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(games[0], " ", "-"), "/", "-"))
-		if slug == dexSlug || slug == vgSlug {
-			return games[0]
-		}
+	if game, ok := dexSlugToGame[slug]; ok {
+		return game
 	}
 	return ""
 }

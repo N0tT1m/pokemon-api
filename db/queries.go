@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/N0tT1m/pokemon-api/models"
@@ -298,17 +299,264 @@ func GetItemByName(ctx context.Context, name string) (*models.ItemDetail, error)
 
 // --- Move queries ---
 
-func GetAllMoveDetails(ctx context.Context, limit, offset int) ([]models.MoveDetail, int, error) {
-	var total int
-	err := Pool.QueryRow(ctx, `SELECT COUNT(*) FROM move_details`).Scan(&total)
+// MovesByVersionGroup returns the learnset for a Pokemon (kebab-case
+// identifier) in a given PokeAPI version-group slug. Joins on moves_canonical
+// for type/damage_class/power/accuracy — both tables are PokeAPI-identifier-
+// keyed, so the join is exact.
+func MovesByVersionGroup(ctx context.Context, pokemonIdentifier, versionGroup string) ([]models.Move, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT m.learn_method, COALESCE(m.level::TEXT, ''), m.move_identifier,
+		       mc.type, mc.damage_class, mc.power, mc.accuracy
+		FROM pokemon_moves_vg m
+		LEFT JOIN moves_canonical mc ON mc.move_identifier = m.move_identifier
+		WHERE m.pokemon_identifier = $1 AND m.version_group = $2
+		ORDER BY m.learn_method, m.level NULLS LAST, m.move_order NULLS LAST, m.move_identifier
+	`, pokemonIdentifier, versionGroup)
 	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var moves []models.Move
+	for rows.Next() {
+		var m models.Move
+		var levelStr string
+		var moveType, damageClass *string
+		if err := rows.Scan(&m.LearnMethod, &levelStr, &m.Name, &moveType, &damageClass, &m.Power, &m.Accuracy); err != nil {
+			return nil, err
+		}
+		m.LevelOrTM = levelStr
+		if moveType != nil {
+			m.Type = *moveType
+		}
+		if damageClass != nil {
+			m.Category = *damageClass
+		}
+		moves = append(moves, m)
+	}
+	return moves, nil
+}
+
+// ItemExtra holds PokeAPI-CSV-sourced fling/baby-trigger metadata.
+type ItemExtra struct {
+	FlingPower     *int    `json:"fling_power"`
+	FlingEffect    *string `json:"fling_effect"`
+	BabyTriggerFor *string `json:"baby_trigger_for"`
+}
+
+// GetItemExtra returns nil if the item has no extra data on file.
+func GetItemExtra(ctx context.Context, identifier string) (*ItemExtra, error) {
+	e := &ItemExtra{}
+	err := Pool.QueryRow(ctx, `
+		SELECT fling_power, fling_effect, baby_trigger_for FROM item_extra
+		WHERE item_identifier = $1
+	`, identifier).Scan(&e.FlingPower, &e.FlingEffect, &e.BabyTriggerFor)
+	if err != nil {
+		return nil, err
+	}
+	return e, nil
+}
+
+// GetItemAttributes returns the attribute identifiers for an item (e.g.
+// "holdable", "consumable", "usable-in-battle").
+func GetItemAttributes(ctx context.Context, identifier string) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT attribute FROM item_attributes
+		WHERE item_identifier = $1 ORDER BY attribute
+	`, identifier)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var attrs []string
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		attrs = append(attrs, a)
+	}
+	return attrs, nil
+}
+
+// GetLocalizedNames returns (language, localized_name) pairs for the given
+// entity. The table argument is whitelisted to one of the *_names tables.
+func GetLocalizedNames(ctx context.Context, table, identifier string) ([]models.PokemonName, error) {
+	pkCol := map[string]string{
+		"item_names":    "item_identifier",
+		"move_names":    "move_identifier",
+		"ability_names": "ability_identifier",
+		"type_names":    "type_identifier",
+	}[table]
+	if pkCol == "" {
+		return nil, fmt.Errorf("invalid names table: %s", table)
+	}
+	q := fmt.Sprintf(`
+		SELECT language, localized_name FROM %s
+		WHERE %s = $1
+		ORDER BY language
+	`, table, pkCol)
+	rows, err := Pool.Query(ctx, q, identifier)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.PokemonName
+	for rows.Next() {
+		var n models.PokemonName
+		if err := rows.Scan(&n.Language, &n.LocalizedName); err != nil {
+			return nil, err
+		}
+		out = append(out, n)
+	}
+	return out, nil
+}
+
+// GetPastTypes returns past type assignments grouped by generation, ordered by
+// slot. The pokemonIdentifier is kebab-case (matches PokeAPI's CSV).
+func GetPastTypes(ctx context.Context, pokemonIdentifier string) ([]models.PastTypeEntry, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT generation, slot, type FROM pokemon_past_types
+		WHERE pokemon_identifier = $1
+		ORDER BY generation, slot
+	`, pokemonIdentifier)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byGen := map[int][]string{}
+	gens := []int{}
+	for rows.Next() {
+		var gen, slot int
+		var typeName string
+		if err := rows.Scan(&gen, &slot, &typeName); err != nil {
+			return nil, err
+		}
+		if _, ok := byGen[gen]; !ok {
+			gens = append(gens, gen)
+		}
+		byGen[gen] = append(byGen[gen], typeName)
+	}
+	out := make([]models.PastTypeEntry, 0, len(gens))
+	for _, g := range gens {
+		out = append(out, models.PastTypeEntry{Generation: g, Types: byGen[g]})
+	}
+	return out, nil
+}
+
+// GetPastAbilities returns past ability assignments grouped by generation.
+func GetPastAbilities(ctx context.Context, pokemonIdentifier string) ([]models.PastAbilityEntry, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT generation, slot, ability, is_hidden FROM pokemon_past_abilities
+		WHERE pokemon_identifier = $1
+		ORDER BY generation, slot
+	`, pokemonIdentifier)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	byGen := map[int][]models.PastAbilityAbility{}
+	gens := []int{}
+	for rows.Next() {
+		var gen, slot int
+		var ability *string
+		var isHidden bool
+		if err := rows.Scan(&gen, &slot, &ability, &isHidden); err != nil {
+			return nil, err
+		}
+		if _, ok := byGen[gen]; !ok {
+			gens = append(gens, gen)
+		}
+		byGen[gen] = append(byGen[gen], models.PastAbilityAbility{
+			Slot: slot, Ability: ability, IsHidden: isHidden,
+		})
+	}
+	out := make([]models.PastAbilityEntry, 0, len(gens))
+	for _, g := range gens {
+		out = append(out, models.PastAbilityEntry{Generation: g, Abilities: byGen[g]})
+	}
+	return out, nil
+}
+
+// GetMoveMeta fetches move_meta for a move identifier (kebab-case lowercase).
+// Returns (nil, sql.ErrNoRows) if missing — callers should treat that as
+// "no meta available" rather than an error.
+func GetMoveMeta(ctx context.Context, identifier string) (*models.MoveMeta, error) {
+	m := &models.MoveMeta{}
+	err := Pool.QueryRow(ctx, `
+		SELECT ailment, ailment_chance, flinch_chance, crit_rate, drain, healing,
+		       stat_chance, min_hits, max_hits, min_turns, max_turns, category
+		FROM move_meta WHERE move_identifier = $1
+	`, identifier).Scan(&m.Ailment, &m.AilmentChance, &m.FlinchChance, &m.CritRate,
+		&m.Drain, &m.Healing, &m.StatChance, &m.MinHits, &m.MaxHits,
+		&m.MinTurns, &m.MaxTurns, &m.Category)
+	if err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// GetMoveStatChanges returns stat changes (e.g. Swords Dance: +2 attack) for
+// a move identifier.
+func GetMoveStatChanges(ctx context.Context, identifier string) ([]models.MoveStatChange, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT stat, change FROM move_stat_changes
+		WHERE move_identifier = $1 ORDER BY stat
+	`, identifier)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.MoveStatChange
+	for rows.Next() {
+		var s models.MoveStatChange
+		if err := rows.Scan(&s.Stat, &s.Change); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+// MoveFilter holds optional filters for GetAllMoveDetails. Empty fields are
+// ignored.
+type MoveFilter struct {
+	Type       string
+	Category   string
+	Generation int // 0 = no filter
+}
+
+func GetAllMoveDetails(ctx context.Context, limit, offset int, filter MoveFilter) ([]models.MoveDetail, int, error) {
+	conditions := []string{}
+	args := []any{}
+	if filter.Type != "" {
+		args = append(args, filter.Type)
+		conditions = append(conditions, fmt.Sprintf("LOWER(type) = LOWER($%d)", len(args)))
+	}
+	if filter.Category != "" {
+		args = append(args, filter.Category)
+		conditions = append(conditions, fmt.Sprintf("LOWER(category) = LOWER($%d)", len(args)))
+	}
+	if filter.Generation > 0 {
+		args = append(args, filter.Generation)
+		conditions = append(conditions, fmt.Sprintf("generation_introduced = $%d", len(args)))
+	}
+	where := ""
+	if len(conditions) > 0 {
+		where = " WHERE " + strings.Join(conditions, " AND ")
+	}
+
+	var total int
+	if err := Pool.QueryRow(ctx, "SELECT COUNT(*) FROM move_details"+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
-	rows, err := Pool.Query(ctx, `
+
+	args = append(args, limit, offset)
+	q := fmt.Sprintf(`
 		SELECT name, type, category, power, accuracy, pp, effect, effect_chance, priority, target,
 		       generation_introduced, z_move_equivalent, max_move_equivalent, contest_type, flags
-		FROM move_details ORDER BY name LIMIT $1 OFFSET $2
-	`, limit, offset)
+		FROM move_details%s ORDER BY name LIMIT $%d OFFSET $%d
+	`, where, len(args)-1, len(args))
+	rows, err := Pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1068,6 +1316,103 @@ func GetPokemonByType(ctx context.Context, typeName string) ([]string, error) {
 	return names, nil
 }
 
+// GetAllTypes returns the canonical list of types from the type_matchups table.
+func GetAllTypes(ctx context.Context) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT attacking_type FROM type_matchups ORDER BY attacking_type
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var types []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		types = append(types, t)
+	}
+	return types, nil
+}
+
+// TypeDamageRelations groups defending types by multiplier bucket relative
+// to the given attacker.
+type TypeDamageRelations struct {
+	DoubleDamageTo   []string
+	HalfDamageTo     []string
+	NoDamageTo       []string
+	DoubleDamageFrom []string
+	HalfDamageFrom   []string
+	NoDamageFrom     []string
+}
+
+// GetTypeDamageRelations returns offensive (attacker = typeName) and defensive
+// (defender = typeName) buckets read from type_matchups. Missing rows imply a
+// 1.0 multiplier.
+func GetTypeDamageRelations(ctx context.Context, typeName string) (*TypeDamageRelations, error) {
+	rels := &TypeDamageRelations{
+		DoubleDamageTo:   []string{},
+		HalfDamageTo:     []string{},
+		NoDamageTo:       []string{},
+		DoubleDamageFrom: []string{},
+		HalfDamageFrom:   []string{},
+		NoDamageFrom:     []string{},
+	}
+
+	offensiveRows, err := Pool.Query(ctx, `
+		SELECT defending_type, multiplier FROM type_matchups
+		WHERE LOWER(attacking_type) = LOWER($1)
+		ORDER BY defending_type
+	`, typeName)
+	if err != nil {
+		return nil, err
+	}
+	for offensiveRows.Next() {
+		var defendingType string
+		var multiplier float32
+		if err := offensiveRows.Scan(&defendingType, &multiplier); err != nil {
+			offensiveRows.Close()
+			return nil, err
+		}
+		switch multiplier {
+		case 2.0:
+			rels.DoubleDamageTo = append(rels.DoubleDamageTo, defendingType)
+		case 0.5:
+			rels.HalfDamageTo = append(rels.HalfDamageTo, defendingType)
+		case 0.0:
+			rels.NoDamageTo = append(rels.NoDamageTo, defendingType)
+		}
+	}
+	offensiveRows.Close()
+
+	defensiveRows, err := Pool.Query(ctx, `
+		SELECT attacking_type, multiplier FROM type_matchups
+		WHERE LOWER(defending_type) = LOWER($1)
+		ORDER BY attacking_type
+	`, typeName)
+	if err != nil {
+		return nil, err
+	}
+	defer defensiveRows.Close()
+	for defensiveRows.Next() {
+		var attackingType string
+		var multiplier float32
+		if err := defensiveRows.Scan(&attackingType, &multiplier); err != nil {
+			return nil, err
+		}
+		switch multiplier {
+		case 2.0:
+			rels.DoubleDamageFrom = append(rels.DoubleDamageFrom, attackingType)
+		case 0.5:
+			rels.HalfDamageFrom = append(rels.HalfDamageFrom, attackingType)
+		case 0.0:
+			rels.NoDamageFrom = append(rels.NoDamageFrom, attackingType)
+		}
+	}
+	return rels, nil
+}
+
 // --- Pokemon biology queries ---
 
 func GetPokemonBiologyText(ctx context.Context, pokemonName string) (*models.PokemonBiology, error) {
@@ -1082,6 +1427,132 @@ func GetPokemonBiologyText(ctx context.Context, pokemonName string) (*models.Pok
 }
 
 // --- Classification queries ---
+
+// classificationDistinct returns distinct non-null values from one of the
+// pokemon_classification text columns. The column name is interpolated, so
+// callers must pass a whitelisted value.
+func classificationDistinct(ctx context.Context, column string) ([]string, error) {
+	allowed := map[string]bool{"color": true, "shape": true, "habitat": true}
+	if !allowed[column] {
+		return nil, fmt.Errorf("invalid column: %s", column)
+	}
+	q := fmt.Sprintf(`
+		SELECT DISTINCT %s FROM pokemon_classification
+		WHERE %s IS NOT NULL AND %s <> ''
+		ORDER BY %s
+	`, column, column, column, column)
+	rows, err := Pool.Query(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			return nil, err
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// pokemonByClassification returns Pokemon names where the given column
+// matches the provided value (case-insensitive).
+func pokemonByClassification(ctx context.Context, column, value string) ([]string, error) {
+	allowed := map[string]bool{"color": true, "shape": true, "habitat": true}
+	if !allowed[column] {
+		return nil, fmt.Errorf("invalid column: %s", column)
+	}
+	q := fmt.Sprintf(`
+		SELECT pokemon_name FROM pokemon_classification
+		WHERE LOWER(%s) = LOWER($1)
+		ORDER BY pokemon_name
+	`, column)
+	rows, err := Pool.Query(ctx, q, value)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, nil
+}
+
+func GetAllPokemonColors(ctx context.Context) ([]string, error) {
+	return classificationDistinct(ctx, "color")
+}
+
+func GetAllPokemonShapes(ctx context.Context) ([]string, error) {
+	return classificationDistinct(ctx, "shape")
+}
+
+func GetAllPokemonHabitats(ctx context.Context) ([]string, error) {
+	return classificationDistinct(ctx, "habitat")
+}
+
+func GetPokemonByColor(ctx context.Context, color string) ([]string, error) {
+	return pokemonByClassification(ctx, "color", color)
+}
+
+func GetPokemonByShape(ctx context.Context, shape string) ([]string, error) {
+	return pokemonByClassification(ctx, "shape", shape)
+}
+
+func GetPokemonByHabitat(ctx context.Context, habitat string) ([]string, error) {
+	return pokemonByClassification(ctx, "habitat", habitat)
+}
+
+// GetAllEggGroups returns distinct egg groups from pokemon.egg_groups.
+func GetAllEggGroups(ctx context.Context) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT DISTINCT g FROM pokemon, UNNEST(egg_groups) g
+		WHERE g IS NOT NULL AND g <> ''
+		ORDER BY g
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, nil
+}
+
+// GetPokemonByEggGroup returns Pokemon whose egg_groups contains the given
+// group (case-insensitive).
+func GetPokemonByEggGroup(ctx context.Context, group string) ([]string, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT name FROM pokemon
+		WHERE EXISTS (SELECT 1 FROM UNNEST(egg_groups) g WHERE LOWER(g) = LOWER($1))
+		ORDER BY name
+	`, group)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, nil
+}
 
 func GetPokemonClassification(ctx context.Context, pokemonName string) (*models.PokemonClassification, error) {
 	c := &models.PokemonClassification{}
@@ -1446,6 +1917,9 @@ func GetEVTargetsByStat(ctx context.Context, stat string, game string) ([]EVTarg
 	}
 	var err error
 
+	// Order is applied in Go after fetching: SQL's split_part-based sort
+	// only sees the first comma-separated yield, so a Pokemon with
+	// "1 HP, 2 Speed" filtered by stat=Speed would sort by 1 instead of 2.
 	if game != "" {
 		rows, err = Pool.Query(ctx, `
 			SELECT p.name, p.ev_yield, gl.game, gl.location, gl.method
@@ -1453,9 +1927,6 @@ func GetEVTargetsByStat(ctx context.Context, stat string, game string) ([]EVTarg
 			JOIN pokemon_game_locations gl ON LOWER(gl.pokemon_name) = LOWER(p.name)
 			WHERE p.ev_yield ILIKE $1
 			  AND gl.game = $2
-			ORDER BY
-				CAST(split_part(trim(p.ev_yield), ' ', 1) AS INTEGER) DESC,
-				p.name, gl.location
 		`, "%"+keyword+"%", game)
 	} else {
 		rows, err = Pool.Query(ctx, `
@@ -1463,9 +1934,6 @@ func GetEVTargetsByStat(ctx context.Context, stat string, game string) ([]EVTarg
 			FROM pokemon p
 			JOIN pokemon_game_locations gl ON LOWER(gl.pokemon_name) = LOWER(p.name)
 			WHERE p.ev_yield ILIKE $1
-			ORDER BY
-				CAST(split_part(trim(p.ev_yield), ' ', 1) AS INTEGER) DESC,
-				p.name, gl.game, gl.location
 		`, "%"+keyword+"%")
 	}
 	if err != nil {
@@ -1499,5 +1967,20 @@ func GetEVTargetsByStat(ctx context.Context, stat string, game string) ([]EVTarg
 		t.YieldAmount = parseYield(t.EVYield)
 		targets = append(targets, t)
 	}
+
+	// Sort by yield amount for the requested stat (descending), then by name,
+	// game, location for stable output.
+	sort.SliceStable(targets, func(i, j int) bool {
+		if targets[i].YieldAmount != targets[j].YieldAmount {
+			return targets[i].YieldAmount > targets[j].YieldAmount
+		}
+		if targets[i].PokemonName != targets[j].PokemonName {
+			return targets[i].PokemonName < targets[j].PokemonName
+		}
+		if targets[i].Game != targets[j].Game {
+			return targets[i].Game < targets[j].Game
+		}
+		return targets[i].Location < targets[j].Location
+	})
 	return targets, nil
 }

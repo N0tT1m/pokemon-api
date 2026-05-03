@@ -22,7 +22,7 @@ func ListItems(w http.ResponseWriter, r *http.Request) {
 
 	items, total, err := db.GetAllItems(r.Context(), limit, offset)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -104,6 +104,17 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	attributes, _ := db.GetItemAttributes(r.Context(), apiName)
+	if attributes == nil {
+		attributes = []string{}
+	}
+	extra, _ := db.GetItemExtra(r.Context(), apiName)
+
+	attributeRefs := make([]map[string]any, len(attributes))
+	for i, a := range attributes {
+		attributeRefs[i] = map[string]any{"name": a}
+	}
+
 	resp := map[string]any{
 		"id":         0,
 		"name":       apiName,
@@ -131,6 +142,12 @@ func GetItem(w http.ResponseWriter, r *http.Request) {
 		},
 		"held_by_pokemon": heldByPokemon,
 		"game_locations":  gameLocations,
+		"attributes":      attributeRefs,
+	}
+	if extra != nil {
+		resp["fling_power"] = extra.FlingPower
+		resp["fling_effect"] = extra.FlingEffect
+		resp["baby_trigger_for"] = extra.BabyTriggerFor
 	}
 
 	writeJSON(w, 200, resp)
@@ -213,6 +230,29 @@ func GetItemLocations(w http.ResponseWriter, r *http.Request) {
 
 // --- Types ---
 
+// GET /api/v2/type
+func ListTypes(w http.ResponseWriter, r *http.Request) {
+	types, err := db.GetAllTypes(r.Context())
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if types == nil {
+		types = []string{}
+	}
+	results := make([]map[string]any, len(types))
+	for i, t := range types {
+		results[i] = map[string]any{
+			"name": t,
+			"url":  "/api/v2/type/" + t + "/",
+		}
+	}
+	writeJSON(w, 200, map[string]any{
+		"count":   len(results),
+		"results": results,
+	})
+}
+
 // GET /api/v2/type/{identifier}
 func GetType(w http.ResponseWriter, r *http.Request) {
 	identifier := strings.ToLower(chi.URLParam(r, "identifier"))
@@ -234,25 +274,58 @@ func GetType(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	rels, _ := db.GetTypeDamageRelations(r.Context(), identifier)
+	if rels == nil {
+		rels = &db.TypeDamageRelations{}
+	}
+
 	writeJSON(w, 200, map[string]any{
-		"name":    identifier,
-		"pokemon": pokemon,
+		"name":             identifier,
+		"pokemon":          pokemon,
+		"damage_relations": typeDamageRelationsJSON(rels),
 	})
+}
+
+func typeDamageRelationsJSON(r *db.TypeDamageRelations) map[string]any {
+	bucket := func(types []string) []map[string]any {
+		out := make([]map[string]any, len(types))
+		for i, t := range types {
+			out[i] = map[string]any{
+				"name": t,
+				"url":  "/api/v2/type/" + t + "/",
+			}
+		}
+		return out
+	}
+	return map[string]any{
+		"double_damage_to":   bucket(r.DoubleDamageTo),
+		"half_damage_to":     bucket(r.HalfDamageTo),
+		"no_damage_to":       bucket(r.NoDamageTo),
+		"double_damage_from": bucket(r.DoubleDamageFrom),
+		"half_damage_from":   bucket(r.HalfDamageFrom),
+		"no_damage_from":     bucket(r.NoDamageFrom),
+	}
 }
 
 // --- Moves ---
 
-// GET /api/v2/move?limit=N&offset=N
+// GET /api/v2/move?limit=N&offset=N&type=fire&category=physical&generation=3
 func ListMoves(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 	if limit <= 0 {
 		limit = 1000
 	}
+	gen, _ := strconv.Atoi(r.URL.Query().Get("generation"))
+	filter := db.MoveFilter{
+		Type:       r.URL.Query().Get("type"),
+		Category:   r.URL.Query().Get("category"),
+		Generation: gen,
+	}
 
-	moves, total, err := db.GetAllMoveDetails(r.Context(), limit, offset)
+	moves, total, err := db.GetAllMoveDetails(r.Context(), limit, offset, filter)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -322,6 +395,13 @@ func GetMove(w http.ResponseWriter, r *http.Request) {
 		target = *m.Target
 	}
 
+	// Move meta + stat changes (PokeAPI CSV-sourced; may be absent)
+	meta, _ := db.GetMoveMeta(r.Context(), apiName)
+	statChanges, _ := db.GetMoveStatChanges(r.Context(), apiName)
+	if statChanges == nil {
+		statChanges = []models.MoveStatChange{}
+	}
+
 	resp := map[string]any{
 		"id":       0,
 		"name":     apiName,
@@ -353,6 +433,8 @@ func GetMove(w http.ResponseWriter, r *http.Request) {
 		},
 		"learned_by_pokemon": learnedBy,
 		"machines":           []any{},
+		"meta":               meta,
+		"stat_changes":       statChanges,
 	}
 
 	writeJSON(w, 200, resp)
@@ -370,7 +452,7 @@ func ListAbilities(w http.ResponseWriter, r *http.Request) {
 
 	abilities, total, err := db.GetAllAbilities(r.Context(), limit, offset)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -460,7 +542,7 @@ func GetAbility(w http.ResponseWriter, r *http.Request) {
 func ListNatures(w http.ResponseWriter, r *http.Request) {
 	natures, err := db.GetAllNatures(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -493,7 +575,7 @@ func ListNatures(w http.ResponseWriter, r *http.Request) {
 func ListBerries(w http.ResponseWriter, r *http.Request) {
 	berries, err := db.GetAllBerries(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 
@@ -578,7 +660,7 @@ func ListRegions(w http.ResponseWriter, r *http.Request) {
 		regions, err = db.GetAllRegions(r.Context())
 	}
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"regions": regions})
@@ -589,7 +671,7 @@ func GetPokemonLocationEncounters(w http.ResponseWriter, r *http.Request) {
 	name := chi.URLParam(r, "name")
 	encounters, err := db.GetEncountersByPokemon(r.Context(), name)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if encounters == nil {
@@ -605,7 +687,7 @@ func GetPokemonLocationEncounters(w http.ResponseWriter, r *http.Request) {
 func ListEncounterGames(w http.ResponseWriter, r *http.Request) {
 	abbreviations, err := db.GetAllEncounterGames(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if abbreviations == nil {
@@ -674,7 +756,7 @@ func ListRoutes(w http.ResponseWriter, r *http.Request) {
 		routes, err = db.GetRoutesByRegion(r.Context(), region)
 	}
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	writeJSON(w, 200, map[string]any{"region": region, "routes": routes})
@@ -694,7 +776,7 @@ func GetRouteEncounters(w http.ResponseWriter, r *http.Request) {
 		encounters, err = db.GetLocationEncounters(r.Context(), region, route)
 	}
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if encounters == nil {
@@ -775,7 +857,7 @@ func ListTmLocations(w http.ResponseWriter, r *http.Request) {
 
 	locs, err := db.GetTmLocations(r.Context(), game)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if locs == nil {
@@ -793,7 +875,7 @@ func ListTmLocations(w http.ResponseWriter, r *http.Request) {
 func ListTmGames(w http.ResponseWriter, r *http.Request) {
 	games, err := db.GetAllTmGames(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if games == nil {
@@ -954,13 +1036,179 @@ func GetPokemonClassification(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, c)
 }
 
+// --- Localized names (PokeAPI CSV-sourced) ---
+
+func writeLocalizedNames(w http.ResponseWriter, r *http.Request, table, paramName string) {
+	identifier := strings.ToLower(chi.URLParam(r, paramName))
+	names, err := db.GetLocalizedNames(r.Context(), table, identifier)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if names == nil {
+		names = []models.PokemonName{}
+	}
+	writeJSON(w, 200, names)
+}
+
+// GET /api/v2/item/{identifier}/names
+func GetItemNames(w http.ResponseWriter, r *http.Request) {
+	writeLocalizedNames(w, r, "item_names", "identifier")
+}
+
+// GET /api/v2/move/{identifier}/names
+func GetMoveNames(w http.ResponseWriter, r *http.Request) {
+	writeLocalizedNames(w, r, "move_names", "identifier")
+}
+
+// GET /api/v2/ability/{identifier}/names
+func GetAbilityNames(w http.ResponseWriter, r *http.Request) {
+	writeLocalizedNames(w, r, "ability_names", "identifier")
+}
+
+// GET /api/v2/type/{identifier}/names
+func GetTypeNames(w http.ResponseWriter, r *http.Request) {
+	writeLocalizedNames(w, r, "type_names", "identifier")
+}
+
+// --- Classification (color / shape / habitat / egg-group) listing ---
+
+// classificationListResponse formats a list of values as PokeAPI-style results.
+func classificationListResponse(values []string, baseURL string) map[string]any {
+	results := make([]map[string]any, len(values))
+	for i, v := range values {
+		slug := toAPIName(v)
+		results[i] = map[string]any{
+			"name": slug,
+			"url":  baseURL + slug + "/",
+		}
+	}
+	return map[string]any{
+		"count":   len(results),
+		"results": results,
+	}
+}
+
+// pokemonListResponse formats a list of Pokemon names as PokeAPI species refs.
+func pokemonListResponse(names []string) []map[string]any {
+	out := make([]map[string]any, len(names))
+	for i, n := range names {
+		apiName := strings.ToLower(n)
+		out[i] = map[string]any{
+			"name": apiName,
+			"url":  "/api/v2/pokemon/" + apiName + "/",
+		}
+	}
+	return out
+}
+
+// GET /api/v2/pokemon-color
+func ListPokemonColors(w http.ResponseWriter, r *http.Request) {
+	colors, err := db.GetAllPokemonColors(r.Context())
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, classificationListResponse(colors, "/api/v2/pokemon-color/"))
+}
+
+// GET /api/v2/pokemon-color/{color}
+func GetPokemonColor(w http.ResponseWriter, r *http.Request) {
+	color := chi.URLParam(r, "color")
+	display := strings.ReplaceAll(color, "-", " ")
+	names, err := db.GetPokemonByColor(r.Context(), display)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"name":            color,
+		"pokemon_species": pokemonListResponse(names),
+	})
+}
+
+// GET /api/v2/pokemon-shape
+func ListPokemonShapes(w http.ResponseWriter, r *http.Request) {
+	shapes, err := db.GetAllPokemonShapes(r.Context())
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, classificationListResponse(shapes, "/api/v2/pokemon-shape/"))
+}
+
+// GET /api/v2/pokemon-shape/{shape}
+func GetPokemonShape(w http.ResponseWriter, r *http.Request) {
+	shape := chi.URLParam(r, "shape")
+	display := strings.ReplaceAll(shape, "-", " ")
+	names, err := db.GetPokemonByShape(r.Context(), display)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"name":            shape,
+		"pokemon_species": pokemonListResponse(names),
+	})
+}
+
+// GET /api/v2/pokemon-habitat
+func ListPokemonHabitats(w http.ResponseWriter, r *http.Request) {
+	habitats, err := db.GetAllPokemonHabitats(r.Context())
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, classificationListResponse(habitats, "/api/v2/pokemon-habitat/"))
+}
+
+// GET /api/v2/pokemon-habitat/{habitat}
+func GetPokemonHabitat(w http.ResponseWriter, r *http.Request) {
+	habitat := chi.URLParam(r, "habitat")
+	display := strings.ReplaceAll(habitat, "-", " ")
+	names, err := db.GetPokemonByHabitat(r.Context(), display)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"name":            habitat,
+		"pokemon_species": pokemonListResponse(names),
+	})
+}
+
+// GET /api/v2/egg-group
+func ListEggGroups(w http.ResponseWriter, r *http.Request) {
+	groups, err := db.GetAllEggGroups(r.Context())
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, classificationListResponse(groups, "/api/v2/egg-group/"))
+}
+
+// GET /api/v2/egg-group/{name}
+func GetEggGroup(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	display := strings.ReplaceAll(name, "-", " ")
+	names, err := db.GetPokemonByEggGroup(r.Context(), display)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"name":            name,
+		"pokemon_species": pokemonListResponse(names),
+	})
+}
+
 // --- Z-Moves ---
 
 // GET /api/v2/z-move
 func ListZMoves(w http.ResponseWriter, r *http.Request) {
 	moves, err := db.GetAllZMoves(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if moves == nil {
@@ -994,7 +1242,7 @@ func ListInGameTrades(w http.ResponseWriter, r *http.Request) {
 	game := r.URL.Query().Get("game")
 	trades, err := db.GetAllInGameTrades(r.Context(), game)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if trades == nil {
@@ -1017,7 +1265,7 @@ func GetPokemonContestStats(w http.ResponseWriter, r *http.Request) {
 	}
 	stats, err := db.GetContestStats(r.Context(), p.Name)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if stats == nil {
@@ -1037,7 +1285,7 @@ func ListEventPokemon(w http.ResponseWriter, r *http.Request) {
 	game := r.URL.Query().Get("game")
 	events, err := db.GetAllEventPokemon(r.Context(), name, game)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if events == nil {
@@ -1057,7 +1305,7 @@ func ListMassOutbreaks(w http.ResponseWriter, r *http.Request) {
 	region := r.URL.Query().Get("region")
 	outbreaks, err := db.GetAllMassOutbreaks(r.Context(), game, region)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if outbreaks == nil {
@@ -1093,7 +1341,7 @@ func ListBattleFacilities(w http.ResponseWriter, r *http.Request) {
 	game := r.URL.Query().Get("game")
 	facilities, err := db.GetAllBattleFacilities(r.Context(), game)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if facilities == nil {
@@ -1113,7 +1361,7 @@ func ListMoveTutors(w http.ResponseWriter, r *http.Request) {
 	move := r.URL.Query().Get("move")
 	tutors, err := db.GetAllMoveTutorLocations(r.Context(), game, move)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if tutors == nil {
@@ -1133,7 +1381,7 @@ func ListVersionExclusives(w http.ResponseWriter, r *http.Request) {
 	gamePair := r.URL.Query().Get("game_pair")
 	exclusives, err := db.GetAllVersionExclusives(r.Context(), game, gamePair)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if exclusives == nil {
@@ -1153,7 +1401,7 @@ func ListTrainers(w http.ResponseWriter, r *http.Request) {
 	role := r.URL.Query().Get("role")
 	trainers, err := db.GetAllTrainers(r.Context(), game, role)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if trainers == nil {
@@ -1172,7 +1420,7 @@ func GetTrainerTeam(w http.ResponseWriter, r *http.Request) {
 	variant := r.URL.Query().Get("variant")
 	pokemon, err := db.GetTrainerPokemon(r.Context(), name, game, variant)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if pokemon == nil {
@@ -1199,7 +1447,7 @@ func GetEVTargets(w http.ResponseWriter, r *http.Request) {
 
 	targets, err := db.GetEVTargetsByStat(r.Context(), stat, game)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if targets == nil {

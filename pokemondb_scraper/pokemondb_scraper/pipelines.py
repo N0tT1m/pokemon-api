@@ -484,7 +484,45 @@ CREATE TABLE IF NOT EXISTS trainer_pokemon (
     team_order      INTEGER NOT NULL DEFAULT 0,
     UNIQUE(trainer_name, game, battle_variant, team_order)
 );
+
+CREATE TABLE IF NOT EXISTS type_matchups (
+    attacking_type TEXT NOT NULL,
+    defending_type TEXT NOT NULL,
+    multiplier     REAL NOT NULL,
+    PRIMARY KEY (attacking_type, defending_type)
+);
 """
+
+
+# Gen 6+ type chart. Only non-1.0 multipliers are stored; missing rows = 1.0.
+TYPE_MATCHUPS = {
+    "normal":   {"rock": 0.5, "ghost": 0.0, "steel": 0.5},
+    "fire":     {"fire": 0.5, "water": 0.5, "grass": 2.0, "ice": 2.0, "bug": 2.0, "rock": 0.5, "dragon": 0.5, "steel": 2.0},
+    "water":    {"fire": 2.0, "water": 0.5, "grass": 0.5, "ground": 2.0, "rock": 2.0, "dragon": 0.5},
+    "electric": {"water": 2.0, "electric": 0.5, "grass": 0.5, "ground": 0.0, "flying": 2.0, "dragon": 0.5},
+    "grass":    {"fire": 0.5, "water": 2.0, "grass": 0.5, "poison": 0.5, "ground": 2.0, "flying": 0.5, "bug": 0.5, "rock": 2.0, "dragon": 0.5, "steel": 0.5},
+    "ice":      {"fire": 0.5, "water": 0.5, "grass": 2.0, "ice": 0.5, "ground": 2.0, "flying": 2.0, "dragon": 2.0, "steel": 0.5},
+    "fighting": {"normal": 2.0, "ice": 2.0, "poison": 0.5, "flying": 0.5, "psychic": 0.5, "bug": 0.5, "rock": 2.0, "ghost": 0.0, "dark": 2.0, "steel": 2.0, "fairy": 0.5},
+    "poison":   {"grass": 2.0, "poison": 0.5, "ground": 0.5, "rock": 0.5, "ghost": 0.5, "steel": 0.0, "fairy": 2.0},
+    "ground":   {"fire": 2.0, "electric": 2.0, "grass": 0.5, "poison": 2.0, "flying": 0.0, "bug": 0.5, "rock": 2.0, "steel": 2.0},
+    "flying":   {"electric": 0.5, "grass": 2.0, "fighting": 2.0, "bug": 2.0, "rock": 0.5, "steel": 0.5},
+    "psychic":  {"fighting": 2.0, "poison": 2.0, "psychic": 0.5, "dark": 0.0, "steel": 0.5},
+    "bug":      {"fire": 0.5, "grass": 2.0, "fighting": 0.5, "poison": 0.5, "flying": 0.5, "psychic": 2.0, "ghost": 0.5, "dark": 2.0, "steel": 0.5, "fairy": 0.5},
+    "rock":     {"fire": 2.0, "ice": 2.0, "fighting": 0.5, "ground": 0.5, "flying": 2.0, "bug": 2.0, "steel": 0.5},
+    "ghost":    {"normal": 0.0, "psychic": 2.0, "ghost": 2.0, "dark": 0.5},
+    "dragon":   {"dragon": 2.0, "steel": 0.5, "fairy": 0.0},
+    "dark":     {"fighting": 0.5, "psychic": 2.0, "ghost": 2.0, "dark": 0.5, "fairy": 0.5},
+    "steel":    {"fire": 0.5, "water": 0.5, "electric": 0.5, "ice": 2.0, "rock": 2.0, "steel": 0.5, "fairy": 2.0},
+    "fairy":    {"fire": 0.5, "fighting": 2.0, "poison": 0.5, "dragon": 2.0, "dark": 2.0, "steel": 0.5},
+}
+
+
+def _type_matchup_rows():
+    return [
+        (atk, dfn, mult)
+        for atk, defs in TYPE_MATCHUPS.items()
+        for dfn, mult in defs.items()
+    ]
 
 
 class PostgresPipeline:
@@ -502,6 +540,13 @@ class PostgresPipeline:
         self.conn.set_client_encoding('UTF8')
         self.cur = self.conn.cursor()
         self.cur.execute(SCHEMA_SQL)
+        execute_values(
+            self.cur,
+            "INSERT INTO type_matchups (attacking_type, defending_type, multiplier) "
+            "VALUES %s ON CONFLICT (attacking_type, defending_type) DO UPDATE "
+            "SET multiplier = EXCLUDED.multiplier",
+            _type_matchup_rows(),
+        )
         self.conn.commit()
 
     def close_spider(self, spider):

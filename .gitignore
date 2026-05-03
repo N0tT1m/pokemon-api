@@ -1,0 +1,22 @@
+# TLS material — never commit
+certs/
+*.pem
+*.key
+
+# Build artifacts
+pokedex-api
+*.exe
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Python (scraper + csv loader)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# CSV snapshot lives in image only
+pokeapi_csv_loader/csv_data/

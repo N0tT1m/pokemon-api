@@ -14,7 +14,7 @@ import (
 func ListRaids(w http.ResponseWriter, r *http.Request) {
 	events, err := db.GetAllRaidEvents(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if events == nil {
@@ -31,7 +31,7 @@ func ListRaids(w http.ResponseWriter, r *http.Request) {
 func ListActiveRaids(w http.ResponseWriter, r *http.Request) {
 	events, err := db.GetActiveRaidEvents(r.Context())
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if events == nil {
@@ -58,7 +58,7 @@ func GetRaidByPokemon(w http.ResponseWriter, r *http.Request) {
 
 	counters, err := db.GetRaidCounters(r.Context(), pokemon, teraType)
 	if err != nil {
-		writeError(w, 500, err.Error())
+		writeServerError(w, r, err)
 		return
 	}
 	if counters == nil {

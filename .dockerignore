@@ -1,0 +1,20 @@
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Don't ship TLS material in the build context — it's mounted at runtime
+certs/
+
+# Sub-projects have their own Dockerfiles; not part of the API image
+pokemondb_scraper/
+pokeapi_csv_loader/
+
+# Build artifacts
+pokedex-api
+*.exe
+
+# Python
+__pycache__/
+*.pyc
