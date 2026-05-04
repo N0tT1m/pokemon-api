@@ -1,0 +1,1614 @@
+openapi: 3.1.0
+info:
+  title: Pokemon API
+  version: "1.0.0"
+  summary: A PokeAPI-compatible Pokemon database with extra game-specific data.
+  description: |
+    A read-only HTTP API serving Pokemon data — species, moves, abilities, items,
+    encounters, evolution chains, raids, trainers, events, and more. Most
+    endpoints are compatible with the public [PokeAPI](https://pokeapi.co/)
+    schema; additional endpoints expose data scraped from
+    [pokemondb.net](https://pokemondb.net) and other sources, including raid
+    rotations, trainer teams, mass outbreaks, version exclusives, in-game
+    trades, and Z-moves.
+
+    **Identifiers.** Endpoints that take an `{identifier}` accept either the
+    Pokemon's lowercase name (e.g. `pikachu`) or its National Pokedex number
+    (e.g. `25`).
+
+    **Pagination.** List endpoints accept `limit` and `offset` query parameters
+    and return `{ count, results }` envelopes mirroring PokeAPI.
+servers:
+  - url: https://pokemon-api.local:158
+    description: Default HTTPS port (158 — Totodile's National Dex number).
+  - url: http://pokemon-api.local:157
+    description: Default plain-HTTP port.
+
+tags:
+  - name: Pokemon
+    description: Core Pokemon data — list, lookup, moves, encounters, sprites, biology.
+  - name: Species & Evolution
+    description: Species metadata, evolution chains, and Pokedex entries.
+  - name: Forms & Variants
+    description: Alternate forms, regional variants, and past-generation type/ability data.
+  - name: Types
+    description: Type metadata and damage relations.
+  - name: Moves
+    description: Move details — power, accuracy, effect, generation.
+  - name: Abilities
+    description: Ability descriptions and the Pokemon that learn them.
+  - name: Items & Berries
+    description: Items, berries, TM/HM locations, held items.
+  - name: Natures
+    description: Nature stat modifiers.
+  - name: Pokedex & Games
+    description: Per-game Pokedex listings, version groups, generations.
+  - name: Locations & Encounters
+    description: Wild encounter tables by region and route.
+  - name: Egg Groups & Classification
+    description: Egg groups, colors, shapes, habitats, legendary/mythical flags.
+  - name: Z-Moves
+    description: Z-Move metadata and base-move mappings.
+  - name: Trainers & Battle Facilities
+    description: NPC trainers, gym leaders, Elite Four, battle frontiers.
+  - name: Events & News
+    description: Live raid rotations, event Pokemon, mass outbreaks.
+  - name: Trades, Tutors & Exclusives
+    description: In-game trades, move tutors, version-exclusive Pokemon.
+  - name: Competitive
+    description: Competitive-format Pokemon data and EV training targets.
+
+components:
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: Page size. Defaults vary per endpoint (typically 1025 or 20).
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+    Offset:
+      name: offset
+      in: query
+      description: Number of items to skip.
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+    Identifier:
+      name: identifier
+      in: path
+      required: true
+      description: Pokemon name (lowercase) or National Dex number.
+      schema:
+        type: string
+      examples:
+        byName:
+          value: totodile
+        byNumber:
+          value: "158"
+    GameQuery:
+      name: game
+      in: query
+      description: Filter by game slug (e.g. `red`, `gold`, `scarlet`).
+      schema:
+        type: string
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    PageEnvelope:
+      type: object
+      description: PokeAPI-style paginated list envelope.
+      properties:
+        count:
+          type: integer
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              url:  { type: string }
+    NamedRef:
+      type: object
+      properties:
+        name: { type: string }
+        url:  { type: string }
+    Pokemon:
+      type: object
+      properties:
+        name: { type: string }
+        url:  { type: string, nullable: true }
+        national_no: { type: string, nullable: true }
+        types:
+          type: array
+          items: { type: string }
+        species: { type: string, nullable: true }
+        height:  { type: string, nullable: true }
+        weight:  { type: string, nullable: true }
+        abilities:
+          type: array
+          items: { type: string }
+        ev_yield:        { type: string, nullable: true }
+        catch_rate:      { type: string, nullable: true }
+        base_friendship: { type: string, nullable: true }
+        base_exp:        { type: string, nullable: true }
+        growth_rate:     { type: string, nullable: true }
+        egg_groups:
+          type: array
+          items: { type: string }
+        gender_ratio: { type: string, nullable: true }
+        egg_cycles:   { type: string, nullable: true }
+        hp:      { type: integer, nullable: true }
+        attack:  { type: integer, nullable: true }
+        defense: { type: integer, nullable: true }
+        sp_atk:  { type: integer, nullable: true }
+        sp_def:  { type: integer, nullable: true }
+        speed:   { type: integer, nullable: true }
+        total:   { type: integer, nullable: true }
+    PokemonListEntry:
+      type: object
+      properties:
+        name: { type: string }
+        national_no: { type: string, nullable: true }
+        types:
+          type: array
+          items: { type: string }
+    CompetitivePokemon:
+      type: object
+      properties:
+        name: { type: string }
+        national_no: { type: string, nullable: true }
+        types:     { type: array, items: { type: string } }
+        abilities: { type: array, items: { type: string } }
+        hp:      { type: integer, nullable: true }
+        attack:  { type: integer, nullable: true }
+        defense: { type: integer, nullable: true }
+        sp_atk:  { type: integer, nullable: true }
+        sp_def:  { type: integer, nullable: true }
+        speed:   { type: integer, nullable: true }
+        total:   { type: integer, nullable: true }
+    TypeDefense:
+      type: object
+      properties:
+        type_name: { type: string }
+        multiplier: { type: number, format: float }
+    Move:
+      type: object
+      properties:
+        learn_method: { type: string }
+        level_or_tm:  { type: string }
+        name:         { type: string }
+        type:         { type: string }
+        category:     { type: string }
+        power:    { type: integer, nullable: true }
+        accuracy: { type: integer, nullable: true }
+    MoveDetail:
+      type: object
+      properties:
+        name:     { type: string }
+        type:     { type: string, nullable: true }
+        category: { type: string, nullable: true }
+        power:    { type: integer, nullable: true }
+        accuracy: { type: integer, nullable: true }
+        pp:       { type: integer, nullable: true }
+        effect:   { type: string,  nullable: true }
+        effect_chance: { type: integer, nullable: true }
+        priority:      { type: integer, nullable: true }
+        target:        { type: string,  nullable: true }
+        generation_introduced: { type: integer, nullable: true }
+        z_move_equivalent:  { type: string, nullable: true }
+        max_move_equivalent: { type: string, nullable: true }
+        contest_type: { type: string, nullable: true }
+        flags:
+          type: array
+          items: { type: string }
+    AbilityDetail:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        generation:  { type: integer, nullable: true }
+    AbilityPokemon:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        is_hidden:    { type: boolean }
+    ItemDetail:
+      type: object
+      properties:
+        name:       { type: string }
+        category:   { type: string,  nullable: true }
+        effect:     { type: string,  nullable: true }
+        sprite_url: { type: string,  nullable: true }
+        buy_price:  { type: integer, nullable: true }
+        sell_price: { type: integer, nullable: true }
+    ItemLocation:
+      type: object
+      properties:
+        item_name: { type: string }
+        game:      { type: string }
+        location:  { type: string }
+        method:    { type: string, nullable: true }
+    TmLocation:
+      type: object
+      properties:
+        tm_number: { type: string }
+        move_name: { type: string }
+        game:      { type: string }
+        location:  { type: string }
+    Berry:
+      type: object
+      properties:
+        name: { type: string }
+        natural_gift_type:  { type: string,  nullable: true }
+        natural_gift_power: { type: integer, nullable: true }
+        size_mm:    { type: integer, nullable: true }
+        firmness:   { type: string,  nullable: true }
+        effect:     { type: string,  nullable: true }
+        growth_time: { type: integer, nullable: true }
+    Nature:
+      type: object
+      properties:
+        name: { type: string }
+        increased_stat: { type: string, nullable: true }
+        decreased_stat: { type: string, nullable: true }
+    PokedexEntry:
+      type: object
+      properties:
+        game_version: { type: string }
+        flavor_text:  { type: string }
+    RegionalDexEntry:
+      type: object
+      properties:
+        dex_number:   { type: integer }
+        pokemon_name: { type: string }
+        types:
+          type: array
+          items: { type: string }
+    NationalDexEntry:
+      type: object
+      properties:
+        national_no:  { type: integer }
+        pokemon_name: { type: string }
+    PokemonName:
+      type: object
+      properties:
+        language:        { type: string }
+        localized_name:  { type: string }
+    PokemonSprite:
+      type: object
+      properties:
+        sprite_type: { type: string }
+        generation:  { type: string }
+        url:         { type: string }
+    PokemonForm:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        form_name:    { type: string }
+        types:     { type: array, items: { type: string } }
+        abilities: { type: array, items: { type: string } }
+        height:  { type: string,  nullable: true }
+        weight:  { type: string,  nullable: true }
+        hp:      { type: integer, nullable: true }
+        attack:  { type: integer, nullable: true }
+        defense: { type: integer, nullable: true }
+        sp_atk:  { type: integer, nullable: true }
+        sp_def:  { type: integer, nullable: true }
+        speed:   { type: integer, nullable: true }
+        total:   { type: integer, nullable: true }
+    EggMoveParent:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        move_name:    { type: string }
+        parent_name:  { type: string }
+    LocationEncounter:
+      type: object
+      properties:
+        region:    { type: string }
+        route_name: { type: string }
+        pokemon_name: { type: string }
+        games: { type: array, items: { type: string } }
+        encounter_method: { type: string, nullable: true }
+        rarity:           { type: string, nullable: true }
+        level_range:      { type: string, nullable: true }
+        time_of_day:      { type: string, nullable: true }
+    PokemonClassification:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        generation_introduced: { type: integer, nullable: true }
+        is_legendary:   { type: boolean }
+        is_mythical:    { type: boolean }
+        is_ultra_beast: { type: boolean }
+        is_baby:        { type: boolean }
+        is_paradox:     { type: boolean }
+        color:   { type: string, nullable: true }
+        shape:   { type: string, nullable: true }
+        habitat: { type: string, nullable: true }
+    PokemonGo:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        max_cp:            { type: integer, nullable: true }
+        buddy_distance_km: { type: integer, nullable: true }
+        base_attack:  { type: integer, nullable: true }
+        base_defense: { type: integer, nullable: true }
+        base_stamina: { type: integer, nullable: true }
+        shiny_available:  { type: boolean }
+        shadow_available: { type: boolean }
+    ContestStat:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        contest_type: { type: string }
+        appeal: { type: integer, nullable: true }
+        jam:    { type: integer, nullable: true }
+    RaidEvent:
+      type: object
+      properties:
+        id:           { type: integer }
+        pokemon_name: { type: string }
+        tera_type:   { type: string,  nullable: true }
+        star_rating: { type: integer, nullable: true }
+        event_start: { type: string,  nullable: true }
+        event_end:   { type: string,  nullable: true }
+        is_active:   { type: boolean }
+        source_url:  { type: string,  nullable: true }
+        scraped_at:  { type: string }
+    ZMove:
+      type: object
+      properties:
+        name:      { type: string }
+        type:      { type: string,  nullable: true }
+        power:     { type: integer, nullable: true }
+        effect:    { type: string,  nullable: true }
+        base_move: { type: string,  nullable: true }
+        category:  { type: string,  nullable: true }
+    InGameTrade:
+      type: object
+      properties:
+        game:              { type: string }
+        location:          { type: string, nullable: true }
+        offered_pokemon:   { type: string }
+        offered_level:     { type: integer, nullable: true }
+        offered_item:      { type: string,  nullable: true }
+        requested_pokemon: { type: string }
+        npc_name:          { type: string,  nullable: true }
+        notes:             { type: string,  nullable: true }
+    EventPokemon:
+      type: object
+      properties:
+        name:     { type: string }
+        game:     { type: string,  nullable: true }
+        year:     { type: integer, nullable: true }
+        level:    { type: integer, nullable: true }
+        held_item: { type: string, nullable: true }
+        moves: { type: array, items: { type: string } }
+        ot_name:             { type: string, nullable: true }
+        distribution_method: { type: string, nullable: true }
+        notes:               { type: string, nullable: true }
+    MassOutbreak:
+      type: object
+      properties:
+        game:         { type: string }
+        region:       { type: string, nullable: true }
+        location:     { type: string, nullable: true }
+        pokemon_name: { type: string }
+        notes:        { type: string, nullable: true }
+    BattleFacility:
+      type: object
+      properties:
+        name:          { type: string }
+        game:          { type: string }
+        region:        { type: string, nullable: true }
+        facility_type: { type: string, nullable: true }
+        description:   { type: string, nullable: true }
+        currency:      { type: string, nullable: true }
+    MoveTutorLocation:
+      type: object
+      properties:
+        move_name: { type: string }
+        game:      { type: string }
+        location:  { type: string, nullable: true }
+        cost:      { type: string, nullable: true }
+    VersionExclusive:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        game:         { type: string }
+        game_pair:    { type: string, nullable: true }
+    Trainer:
+      type: object
+      properties:
+        name:           { type: string }
+        game:           { type: string }
+        role:           { type: string, nullable: true }
+        specialty_type: { type: string, nullable: true }
+        location:       { type: string, nullable: true }
+        battle_variant: { type: string }
+    TrainerPokemon:
+      type: object
+      properties:
+        trainer_name:   { type: string }
+        game:           { type: string }
+        battle_variant: { type: string }
+        pokemon_name:   { type: string }
+        level:    { type: integer, nullable: true }
+        held_item: { type: string, nullable: true }
+        ability:   { type: string, nullable: true }
+        moves: { type: array, items: { type: string } }
+        team_order: { type: integer }
+    WildHeldItem:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        game:         { type: string }
+        item_name:    { type: string }
+        rarity:       { type: string }
+    PokemonBiology:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        biology:      { type: string }
+    PokemonGameLocation:
+      type: object
+      properties:
+        pokemon_name: { type: string }
+        game:         { type: string }
+        location:     { type: string }
+        method:       { type: string, nullable: true }
+
+  responses:
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    BadRequest:
+      description: Invalid request parameters.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServerError:
+      description: Internal server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+paths:
+  /api/v2/pokemon:
+    get:
+      tags: [Pokemon]
+      summary: List Pokemon
+      description: PokeAPI-compatible paginated list. `limit` defaults to 1025 (all Pokemon).
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageEnvelope' }
+
+  /api/v2/pokemon/competitive:
+    get:
+      tags: [Competitive]
+      summary: List competitive-format Pokemon
+      description: Returns Pokemon with stats/abilities optimized for competitive use.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Competitive Pokemon list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CompetitivePokemon' }
+
+  /api/v2/pokemon/ev-targets:
+    get:
+      tags: [Competitive]
+      summary: EV training targets
+      description: Lists Pokemon grouped by which EV stat they yield, useful for EV training routes.
+      responses:
+        '200':
+          description: EV target groups.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: array
+                  items: { type: object }
+
+  /api/v2/pokemon/{identifier}:
+    get:
+      tags: [Pokemon]
+      summary: Get a Pokemon
+      description: PokeAPI-compatible Pokemon object including types, abilities, stats, sprites.
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: PokeAPI-shaped Pokemon object.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: PokeAPI-compatible Pokemon document.
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v2/pokemon/{identifier}/encounters:
+    get:
+      tags: [Locations & Encounters]
+      summary: Get a Pokemon's encounter locations
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: PokeAPI-compatible encounter list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object }
+
+  /api/v2/pokemon/{identifier}/moves:
+    get:
+      tags: [Moves]
+      summary: Get a Pokemon's learnable moves
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+        - name: version_group
+          in: query
+          schema: { type: string }
+          description: Optional version-group slug (e.g. `red-blue`, `scarlet-violet`).
+      responses:
+        '200':
+          description: Moves grouped by learn method.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Move' }
+
+  /api/v2/pokemon/{identifier}/type-defenses:
+    get:
+      tags: [Types]
+      summary: Get type damage multipliers against this Pokemon
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Multipliers per attacking type.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TypeDefense' }
+
+  /api/v2/pokemon-species/{identifier}:
+    get:
+      tags: [Species & Evolution]
+      summary: Get a Pokemon species
+      description: PokeAPI-compatible species document — flavor text, color, habitat, capture rate, evolution chain ref.
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Species document.
+          content:
+            application/json:
+              schema: { type: object }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v2/evolution-chain/{id}:
+    get:
+      tags: [Species & Evolution]
+      summary: Get an evolution chain
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+          description: Evolution chain ID (matches species ID at the chain root).
+      responses:
+        '200':
+          description: PokeAPI-compatible evolution chain.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/v2/type:
+    get:
+      tags: [Types]
+      summary: List types
+      responses:
+        '200':
+          description: Type list.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageEnvelope' }
+
+  /api/v2/type/{identifier}:
+    get:
+      tags: [Types]
+      summary: Get a type
+      description: Damage relations, moves, Pokemon of this type.
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Type document.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/v2/type/{identifier}/names:
+    get:
+      tags: [Types]
+      summary: Localized names for a type
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Localized name list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonName' }
+
+  /api/v2/item/{identifier}/names:
+    get:
+      tags: [Items & Berries]
+      summary: Localized names for an item
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Localized name list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonName' }
+
+  /api/v2/move/{identifier}/names:
+    get:
+      tags: [Moves]
+      summary: Localized names for a move
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Localized name list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonName' }
+
+  /api/v2/ability/{identifier}/names:
+    get:
+      tags: [Abilities]
+      summary: Localized names for an ability
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Localized name list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonName' }
+
+  /api/v2/generation/{id}:
+    get:
+      tags: [Pokedex & Games]
+      summary: Get a generation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Generation document.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/v2/pokemon-color:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List Pokemon colors
+      responses:
+        '200':
+          description: Color list.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/v2/pokemon-color/{color}:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List Pokemon by color
+      parameters:
+        - name: color
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Pokemon of the given color.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonListEntry' }
+
+  /api/v2/pokemon-shape:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List Pokemon shapes
+      responses:
+        '200': { description: Shape list., content: { application/json: { schema: { type: object } } } }
+
+  /api/v2/pokemon-shape/{shape}:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List Pokemon by shape
+      parameters:
+        - name: shape
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Pokemon of the given shape.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonListEntry' }
+
+  /api/v2/pokemon-habitat:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List Pokemon habitats
+      responses:
+        '200': { description: Habitat list., content: { application/json: { schema: { type: object } } } }
+
+  /api/v2/pokemon-habitat/{habitat}:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List Pokemon by habitat
+      parameters:
+        - name: habitat
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Pokemon of the given habitat.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonListEntry' }
+
+  /api/v2/egg-group:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List egg groups
+      responses:
+        '200': { description: Egg group list., content: { application/json: { schema: { type: object } } } }
+
+  /api/v2/egg-group/{name}:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: List Pokemon in an egg group
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Pokemon in the egg group.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonListEntry' }
+
+  /api/v2/version-group/{name}:
+    get:
+      tags: [Pokedex & Games]
+      summary: Get a version group
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+          description: Slug like `red-blue`, `gold-silver`, `scarlet-violet`.
+      responses:
+        '200':
+          description: Version group document.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/v2/pokedex/{identifier}:
+    get:
+      tags: [Pokedex & Games]
+      summary: Get a Pokedex
+      description: |
+        PokeAPI-compatible regional Pokedex. Pass `?game=<slug>` to scope flavor
+        entries to a specific game.
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Pokedex document.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/v2/pokedex/game/{game}:
+    get:
+      tags: [Pokedex & Games]
+      summary: Get a game's Pokedex
+      parameters:
+        - name: game
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Regional Pokedex entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RegionalDexEntry' }
+
+  /api/v2/games:
+    get:
+      tags: [Pokedex & Games]
+      summary: List games
+      responses:
+        '200':
+          description: Game slugs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items: { type: string }
+
+  /api/v2/item:
+    get:
+      tags: [Items & Berries]
+      summary: List items
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Items list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/ItemDetail' }
+
+  /api/v2/item/{identifier}:
+    get:
+      tags: [Items & Berries]
+      summary: Get an item
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Item details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ItemDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v2/item/{identifier}/locations:
+    get:
+      tags: [Items & Berries]
+      summary: Where an item can be obtained
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Item locations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ItemLocation' }
+
+  /api/v2/move:
+    get:
+      tags: [Moves]
+      summary: List moves
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+        - name: generation
+          in: query
+          schema: { type: integer }
+          description: Filter by generation introduced.
+        - name: type
+          in: query
+          schema: { type: string }
+          description: Filter by move type (e.g. `water`, `fire`).
+        - name: category
+          in: query
+          schema: { type: string }
+          description: Filter by category (`physical`, `special`, `status`).
+      responses:
+        '200':
+          description: Move list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/MoveDetail' }
+
+  /api/v2/move/{identifier}:
+    get:
+      tags: [Moves]
+      summary: Get a move
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Move details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MoveDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v2/ability:
+    get:
+      tags: [Abilities]
+      summary: List abilities
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Ability list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer }
+                  results:
+                    type: array
+                    items: { $ref: '#/components/schemas/AbilityDetail' }
+
+  /api/v2/ability/{identifier}:
+    get:
+      tags: [Abilities]
+      summary: Get an ability
+      description: Returns ability details and the Pokemon that have it.
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Ability with Pokemon list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ability: { $ref: '#/components/schemas/AbilityDetail' }
+                  pokemon:
+                    type: array
+                    items: { $ref: '#/components/schemas/AbilityPokemon' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v2/nature:
+    get:
+      tags: [Natures]
+      summary: List natures
+      responses:
+        '200':
+          description: All 25 natures.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Nature' }
+
+  /api/v2/berry:
+    get:
+      tags: [Items & Berries]
+      summary: List berries
+      responses:
+        '200':
+          description: Berry list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Berry' }
+
+  /api/v2/berry/{identifier}:
+    get:
+      tags: [Items & Berries]
+      summary: Get a berry
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Berry details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Berry' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v2/pokemon/{identifier}/flavor-text:
+    get:
+      tags: [Species & Evolution]
+      summary: Pokedex flavor text per game
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Flavor text entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokedexEntry' }
+
+  /api/v2/pokemon/{identifier}/names:
+    get:
+      tags: [Pokemon]
+      summary: Localized Pokemon names
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Localized names.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonName' }
+
+  /api/v2/pokemon/{identifier}/sprites-all:
+    get:
+      tags: [Pokemon]
+      summary: All sprite URLs for a Pokemon
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Sprite list across generations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonSprite' }
+
+  /api/v2/pokemon/{identifier}/held-items:
+    get:
+      tags: [Items & Berries]
+      summary: Items wild Pokemon may be holding
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Wild held-item entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/WildHeldItem' }
+
+  /api/v2/pokemon/{identifier}/biology:
+    get:
+      tags: [Pokemon]
+      summary: Pokemon biology / dex description
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Biology blurb.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokemonBiology' }
+
+  /api/v2/pokemon/{identifier}/game-locations:
+    get:
+      tags: [Locations & Encounters]
+      summary: Per-game encounter locations for a Pokemon
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Game-location entries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonGameLocation' }
+
+  /api/v2/pokemon/{identifier}/forms:
+    get:
+      tags: [Forms & Variants]
+      summary: Alternate forms for a Pokemon
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Form list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PokemonForm' }
+
+  /api/v2/pokemon/{identifier}/egg-move-parents:
+    get:
+      tags: [Moves]
+      summary: Parents that can pass egg moves to this Pokemon
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Egg move parent list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EggMoveParent' }
+
+  /api/v2/tm:
+    get:
+      tags: [Items & Berries]
+      summary: List TM/HM locations
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: TM locations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TmLocation' }
+
+  /api/v2/tm/games:
+    get:
+      tags: [Items & Berries]
+      summary: List games with TM data
+      responses:
+        '200':
+          description: Game slugs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items: { type: string }
+
+  /api/v2/item-locations:
+    get:
+      tags: [Items & Berries]
+      summary: Browse item locations by game
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Item locations.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ItemLocation' }
+
+  /api/v2/item-locations/games:
+    get:
+      tags: [Items & Berries]
+      summary: List games with item-location data
+      responses:
+        '200':
+          description: Game slugs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items: { type: string }
+
+  /api/v2/location/games:
+    get:
+      tags: [Locations & Encounters]
+      summary: List games with encounter data
+      responses:
+        '200':
+          description: Game slugs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  games:
+                    type: array
+                    items: { type: string }
+
+  /api/v2/location/regions:
+    get:
+      tags: [Locations & Encounters]
+      summary: List regions
+      responses:
+        '200':
+          description: Region list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+
+  /api/v2/location/pokemon/{name}:
+    get:
+      tags: [Locations & Encounters]
+      summary: Encounter locations for a Pokemon
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Encounter list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LocationEncounter' }
+
+  /api/v2/location/region/{region}/routes:
+    get:
+      tags: [Locations & Encounters]
+      summary: List routes in a region
+      parameters:
+        - name: region
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Route list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+
+  /api/v2/location/region/{region}/route/{route}:
+    get:
+      tags: [Locations & Encounters]
+      summary: Encounters on a specific route
+      parameters:
+        - name: region
+          in: path
+          required: true
+          schema: { type: string }
+        - name: route
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Route encounter list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/LocationEncounter' }
+
+  /api/v2/news/raids:
+    get:
+      tags: [Events & News]
+      summary: List all raid events
+      responses:
+        '200':
+          description: Raid event list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RaidEvent' }
+
+  /api/v2/news/raids/active:
+    get:
+      tags: [Events & News]
+      summary: List currently-active raid events
+      responses:
+        '200':
+          description: Active raids only.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RaidEvent' }
+
+  /api/v2/news/raids/{pokemon}:
+    get:
+      tags: [Events & News]
+      summary: Raid events featuring a specific Pokemon
+      parameters:
+        - name: pokemon
+          in: path
+          required: true
+          schema: { type: string }
+        - name: tera_type
+          in: query
+          schema: { type: string }
+          description: Optional tera type filter.
+      responses:
+        '200':
+          description: Matching raid events plus suggested counters.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/v2/pokemon/{identifier}/classification:
+    get:
+      tags: [Egg Groups & Classification]
+      summary: Legendary / mythical / paradox flags for a Pokemon
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Classification record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokemonClassification' }
+
+  /api/v2/pokemon/{identifier}/go:
+    get:
+      tags: [Pokemon]
+      summary: Pokemon GO stats
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: GO stat record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PokemonGo' }
+
+  /api/v2/pokemon/{identifier}/contest-stats:
+    get:
+      tags: [Pokemon]
+      summary: Contest stats for a Pokemon
+      parameters:
+        - $ref: '#/components/parameters/Identifier'
+      responses:
+        '200':
+          description: Per-contest-type appeal/jam values.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ContestStat' }
+
+  /api/v2/z-move:
+    get:
+      tags: [Z-Moves]
+      summary: List Z-Moves
+      responses:
+        '200':
+          description: Z-Move list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ZMove' }
+
+  /api/v2/z-move/{name}:
+    get:
+      tags: [Z-Moves]
+      summary: Get a Z-Move
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Z-Move details.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ZMove' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/v2/in-game-trades:
+    get:
+      tags: [Trades, Tutors & Exclusives]
+      summary: List in-game trades
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: In-game trade list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/InGameTrade' }
+
+  /api/v2/event-pokemon:
+    get:
+      tags: [Events & News]
+      summary: List event-distributed Pokemon
+      parameters:
+        - name: name
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Event Pokemon distributions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/EventPokemon' }
+
+  /api/v2/mass-outbreaks:
+    get:
+      tags: [Events & News]
+      summary: List mass outbreaks (Legends Arceus / SV)
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+        - name: region
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Outbreak list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MassOutbreak' }
+
+  /api/v2/battle-facility:
+    get:
+      tags: [Trainers & Battle Facilities]
+      summary: List battle facilities
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+      responses:
+        '200':
+          description: Battle facility list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/BattleFacility' }
+
+  /api/v2/move-tutor:
+    get:
+      tags: [Trades, Tutors & Exclusives]
+      summary: List move tutor locations
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+        - name: move
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Move-tutor list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MoveTutorLocation' }
+
+  /api/v2/version-exclusive:
+    get:
+      tags: [Trades, Tutors & Exclusives]
+      summary: List version-exclusive Pokemon
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+        - name: game_pair
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Version-exclusive list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/VersionExclusive' }
+
+  /api/v2/trainer:
+    get:
+      tags: [Trainers & Battle Facilities]
+      summary: List trainers
+      parameters:
+        - $ref: '#/components/parameters/GameQuery'
+        - name: role
+          in: query
+          schema: { type: string }
+          description: Trainer role filter (e.g. `gym-leader`, `elite-four`, `champion`, `rival`).
+      responses:
+        '200':
+          description: Trainer list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Trainer' }
+
+  /api/v2/trainer/{name}/team:
+    get:
+      tags: [Trainers & Battle Facilities]
+      summary: Get a trainer's Pokemon team
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: '#/components/parameters/GameQuery'
+        - name: variant
+          in: query
+          schema: { type: string }
+          description: Battle variant (e.g. `single`, `double`, `rematch`).
+      responses:
+        '200':
+          description: Trainer's team.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TrainerPokemon' }

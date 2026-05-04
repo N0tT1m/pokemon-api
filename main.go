@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"embed"
 	"errors"
 	"log"
 	"net/http"
@@ -16,6 +17,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
+//go:embed docs/openapi.yaml docs/index.html
+var docsFS embed.FS
+
 func main() {
 	ctx := context.Background()
 
@@ -28,6 +32,10 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
+
+	// API documentation (Redoc)
+	r.Get("/docs", serveEmbedded("docs/index.html", "text/html; charset=utf-8"))
+	r.Get("/openapi.yaml", serveEmbedded("docs/openapi.yaml", "application/yaml; charset=utf-8"))
 
 	// PokeAPI-compatible endpoints
 	r.Get("/api/v2/pokemon", handlers.ListPokemon)
@@ -202,6 +210,17 @@ func main() {
 		}
 	}
 	log.Println("Shutdown complete")
+}
+
+func serveEmbedded(path, contentType string) http.HandlerFunc {
+	data, err := docsFS.ReadFile(path)
+	if err != nil {
+		log.Fatalf("embed: failed to read %s: %v", path, err)
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", contentType)
+		w.Write(data)
+	}
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
