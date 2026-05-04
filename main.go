@@ -17,7 +17,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-//go:embed docs/openapi.yaml docs/index.html
+//go:embed docs/openapi.yaml docs/index.html docs/playground.html
 var docsFS embed.FS
 
 func main() {
@@ -33,8 +33,9 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
 
-	// API documentation (Redoc)
+	// API documentation (Redoc reference + Swagger UI playground)
 	r.Get("/docs", serveEmbedded("docs/index.html", "text/html; charset=utf-8"))
+	r.Get("/playground", serveEmbedded("docs/playground.html", "text/html; charset=utf-8"))
 	r.Get("/openapi.yaml", serveEmbedded("docs/openapi.yaml", "application/yaml; charset=utf-8"))
 
 	// PokeAPI-compatible endpoints

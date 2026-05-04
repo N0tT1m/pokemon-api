@@ -19,10 +19,8 @@ info:
     **Pagination.** List endpoints accept `limit` and `offset` query parameters
     and return `{ count, results }` envelopes mirroring PokeAPI.
 servers:
-  - url: https://pokemon-api.local:158
-    description: Default HTTPS port (158 — Totodile's National Dex number).
-  - url: http://pokemon-api.local:157
-    description: Default plain-HTTP port.
+  - url: https://poke-api.duocore.dev:158
+    description: Public API (HTTPS, port 158 — Totodile's National Dex number).
 
 tags:
   - name: Pokemon
