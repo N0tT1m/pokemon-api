@@ -45,5 +45,10 @@ jobs:
       - name: Vet (sqlite)
         run: go vet -tags sqlite ./...
 
-      - name: Test
+      - name: Test (postgres)
         run: go test -race ./...
+
+      # The db dialect tests are behind //go:build sqlite, so an untagged
+      # `go test ./...` silently skips the whole file.
+      - name: Test (sqlite)
+        run: go test -race -tags sqlite ./...

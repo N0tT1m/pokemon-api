@@ -10,6 +10,16 @@ import (
 	"github.com/N0tT1m/pokemon-api/models"
 )
 
+// GetPokemonByName resolves a Pokemon by its stored name or by its PokeAPI
+// slug. Names are scraped verbatim, so the database holds "Farfetch'd",
+// "Mr. Mime" and "Type: Null" while callers ask for "farfetchd", "mr-mime" and
+// "type-null". The second WHERE branch strips the punctuation that does not
+// survive slugification, and the ORDER BY keeps an exact name match ahead of a
+// slug match. The two Nidoran are not recoverable this way and are mapped
+// explicitly by the caller.
+//
+// REPLACE and LOWER behave the same on Postgres and SQLite, so this needs no
+// dialect branch.
 func GetPokemonByName(ctx context.Context, name string) (*models.Pokemon, error) {
 	p := &models.Pokemon{}
 	err := Pool.QueryRow(ctx, `
@@ -17,7 +27,12 @@ func GetPokemonByName(ctx context.Context, name string) (*models.Pokemon, error)
 			abilities, ev_yield, catch_rate, base_friendship, base_exp,
 			growth_rate, egg_groups, gender_ratio, egg_cycles,
 			hp, attack, defense, sp_atk, sp_def, speed, total
-		FROM pokemon WHERE LOWER(name) = LOWER($1)
+		FROM pokemon
+		WHERE LOWER(name) = LOWER($1)
+		   OR LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+		        name, '''', ''), '.', ''), ':', ''), 'é', 'e'), ' ', '-')) = LOWER($1)
+		ORDER BY CASE WHEN LOWER(name) = LOWER($1) THEN 0 ELSE 1 END
+		LIMIT 1
 	`, name).Scan(
 		&p.Name, &p.URL, &p.NationalNo, &p.Types, &p.Species,
 		&p.Height, &p.Weight, &p.Abilities, &p.EVYield, &p.CatchRate,

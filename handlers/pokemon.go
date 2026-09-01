@@ -35,6 +35,17 @@ func writeServerError(w http.ResponseWriter, r *http.Request, err error) {
 	writeError(w, 500, "internal server error")
 }
 
+// dbNameForSlug maps a PokeAPI slug to the name stored in the database, for
+// species whose stored name cannot be derived from the slug by stripping
+// punctuation. The scraper keeps pokemondb's "Nidoran♀ (female)" spelling,
+// which shares no usable prefix with PokeAPI's "nidoran-f", so these two need
+// an explicit entry. Everything else — Farfetch'd, Mr. Mime, Type: Null,
+// Flabébé — is handled by the slug branch in db.GetPokemonByName.
+var dbNameForSlug = map[string]string{
+	"nidoran-f": "Nidoran♀ (female)",
+	"nidoran-m": "Nidoran♂ (male)",
+}
+
 // lookupPokemon resolves an identifier (name or national dex number) to a Pokemon.
 func lookupPokemon(r *http.Request) (*models.Pokemon, error) {
 	identifier := strings.ToLower(chi.URLParam(r, "identifier"))
@@ -42,6 +53,9 @@ func lookupPokemon(r *http.Request) (*models.Pokemon, error) {
 	// Try as number first
 	if no, err := strconv.Atoi(identifier); err == nil {
 		return db.GetPokemonByNationalNo(r.Context(), no)
+	}
+	if dbName, ok := dbNameForSlug[identifier]; ok {
+		return db.GetPokemonByName(r.Context(), dbName)
 	}
 	return db.GetPokemonByName(r.Context(), identifier)
 }

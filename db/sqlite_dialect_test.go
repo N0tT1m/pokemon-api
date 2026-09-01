@@ -28,7 +28,13 @@ func newTestDB(t *testing.T) {
 		CREATE TABLE pokemon (
 			name        TEXT PRIMARY KEY,
 			types       TEXT NOT NULL DEFAULT '[]',
-			egg_groups  TEXT NOT NULL DEFAULT '[]'
+			egg_groups  TEXT NOT NULL DEFAULT '[]',
+			abilities   TEXT NOT NULL DEFAULT '[]',
+			url TEXT, national_no TEXT, species TEXT, height TEXT, weight TEXT,
+			ev_yield TEXT, catch_rate TEXT, base_friendship TEXT, base_exp TEXT,
+			growth_rate TEXT, gender_ratio TEXT, egg_cycles TEXT,
+			hp INTEGER, attack INTEGER, defense INTEGER,
+			sp_atk INTEGER, sp_def INTEGER, speed INTEGER, total INTEGER
 		);
 		CREATE TABLE raid_events (scraped_at TEXT);
 		INSERT INTO pokemon (name, types, egg_groups) VALUES
@@ -37,6 +43,13 @@ func newTestDB(t *testing.T) {
 			('Lapras',    '["Water","Ice"]',  '["Monster","Water 1"]'),
 			('Pikachu',   '["Electric"]',     '["Field","Fairy"]'),
 			('Missingno', '[]',               '[]');
+		-- Species whose scraped names do not slugify to their PokeAPI
+		-- identifier. Empty type/egg-group arrays keep them out of the
+		-- membership and DISTINCT assertions above.
+		INSERT INTO pokemon (name) VALUES
+			('Farfetch''d'), ('Sirfetch''d'), ('Mr. Mime'), ('Mr. Rime'),
+			('Mime Jr.'), ('Type: Null'), ('Flabébé'),
+			('Nidoran♀ (female)'), ('Nidoran♂ (male)');
 		INSERT INTO raid_events (scraped_at) VALUES ('2026-07-18T12:34:56Z');
 	`
 	if _, err := seed.Exec(ddl); err != nil {
@@ -167,5 +180,45 @@ func TestPlaceholderBinding(t *testing.T) {
 	}
 	if name != "Totodile" {
 		t.Errorf("name = %q, want %q", name, "Totodile")
+	}
+}
+
+// TestGetPokemonByNameSlug covers the slug branch of GetPokemonByName. The
+// scraper stores pokemondb's punctuation verbatim, so a caller asking for
+// PokeAPI's "mr-mime" must still reach the row stored as "Mr. Mime". Before
+// the slug branch existed every one of these returned no rows, and the API
+// answered 404.
+func TestGetPokemonByNameSlug(t *testing.T) {
+	newTestDB(t)
+	ctx := context.Background()
+
+	cases := map[string]string{
+		"farfetchd": "Farfetch'd",
+		"sirfetchd": "Sirfetch'd",
+		"mr-mime":   "Mr. Mime",
+		"mr-rime":   "Mr. Rime",
+		"mime-jr":   "Mime Jr.",
+		"type-null": "Type: Null",
+		"flabebe":   "Flabébé",
+
+		// Exact stored names must keep working, in any case.
+		"Totodile": "Totodile",
+		"pikachu":  "Pikachu",
+	}
+	for slug, want := range cases {
+		p, err := GetPokemonByName(ctx, slug)
+		if err != nil {
+			t.Errorf("GetPokemonByName(%q): %v", slug, err)
+			continue
+		}
+		if p.Name != want {
+			t.Errorf("GetPokemonByName(%q) = %q, want %q", slug, p.Name, want)
+		}
+	}
+
+	// A genuinely absent species must still miss rather than resolve to
+	// something adjacent.
+	if _, err := GetPokemonByName(ctx, "not-a-pokemon"); err == nil {
+		t.Error("GetPokemonByName(not-a-pokemon) succeeded, want an error")
 	}
 }
