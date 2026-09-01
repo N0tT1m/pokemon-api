@@ -1,0 +1,10 @@
+# Azure SQLite ingest pipeline.
+#
+# sqlite3 and json ship with CPython, so there is no database driver here —
+# this is deliberately lighter than the Postgres pipelines (no psycopg2).
+#
+# Requires Python 3.10+ (PEP 604 `X | None` annotations) and a SQLite build
+# with the JSON1 extension, which is compiled in by default since 3.38.
+
+Scrapy>=2.11
+itemadapter>=0.8

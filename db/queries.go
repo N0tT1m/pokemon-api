@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/N0tT1m/pokemon-api/models"
@@ -188,6 +189,74 @@ func GetGameNationalDex(ctx context.Context, game string) ([]models.NationalDexE
 	return entries, nil
 }
 
+// RegionalDexEntryWithNo is a regional dex entry carrying the species' national
+// dex number, resolved in the same query so callers don't need a per-entry
+// lookup. NationalNo is 0 when the species has no matching pokemon row.
+type RegionalDexEntryWithNo struct {
+	DexNumber   int
+	PokemonName string
+	NationalNo  int
+}
+
+// GetRegionalDexWithNationalNo returns a game's regional dex joined to the
+// pokemon table so each entry carries its national number in one round-trip.
+func GetRegionalDexWithNationalNo(ctx context.Context, game string) ([]RegionalDexEntryWithNo, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT rd.dex_number, rd.pokemon_name, p.national_no
+		FROM regional_dex rd
+		LEFT JOIN pokemon p ON LOWER(p.name) = LOWER(rd.pokemon_name)
+		WHERE rd.game = $1
+		ORDER BY rd.dex_number
+	`, game)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []RegionalDexEntryWithNo
+	for rows.Next() {
+		var e RegionalDexEntryWithNo
+		var nationalNo *string
+		if err := rows.Scan(&e.DexNumber, &e.PokemonName, &nationalNo); err != nil {
+			return nil, err
+		}
+		if nationalNo != nil {
+			trimmed := strings.TrimLeft(*nationalNo, "0")
+			if trimmed != "" {
+				e.NationalNo, _ = strconv.Atoi(trimmed)
+			}
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+// GetPokemonByNationalNoRange returns list entries whose national number falls
+// within [start, end] inclusive, filtered and ordered in SQL. national_no is
+// stored as text, so it is cast to an integer for the comparison.
+func GetPokemonByNationalNoRange(ctx context.Context, start, end int) ([]models.PokemonListEntry, error) {
+	rows, err := Pool.Query(ctx, `
+		SELECT name, national_no, types
+		FROM pokemon
+		WHERE CAST(national_no AS INTEGER) BETWEEN $1 AND $2
+		ORDER BY CAST(national_no AS INTEGER)
+	`, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []models.PokemonListEntry
+	for rows.Next() {
+		var e models.PokemonListEntry
+		if err := rows.Scan(&e.Name, &e.NationalNo, &e.Types); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
 func GetAllGames(ctx context.Context) ([]string, error) {
 	rows, err := Pool.Query(ctx, `
 		SELECT DISTINCT game FROM regional_dex ORDER BY game
@@ -304,14 +373,14 @@ func GetItemByName(ctx context.Context, name string) (*models.ItemDetail, error)
 // for type/damage_class/power/accuracy — both tables are PokeAPI-identifier-
 // keyed, so the join is exact.
 func MovesByVersionGroup(ctx context.Context, pokemonIdentifier, versionGroup string) ([]models.Move, error) {
-	rows, err := Pool.Query(ctx, `
-		SELECT m.learn_method, COALESCE(m.level::TEXT, ''), m.move_identifier,
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
+		SELECT m.learn_method, COALESCE(%s, ''), m.move_identifier,
 		       mc.type, mc.damage_class, mc.power, mc.accuracy
 		FROM pokemon_moves_vg m
 		LEFT JOIN moves_canonical mc ON mc.move_identifier = m.move_identifier
 		WHERE m.pokemon_identifier = $1 AND m.version_group = $2
 		ORDER BY m.learn_method, m.level NULLS LAST, m.move_order NULLS LAST, m.move_identifier
-	`, pokemonIdentifier, versionGroup)
+	`, CastText("m.level")), pokemonIdentifier, versionGroup)
 	if err != nil {
 		return nil, err
 	}
@@ -813,7 +882,10 @@ func GetAllRegions(ctx context.Context) ([]string, error) {
 }
 
 func GetRegionsByGame(ctx context.Context, game string) ([]string, error) {
-	rows, err := Pool.Query(ctx, `SELECT DISTINCT region FROM location_encounters WHERE $1 = ANY(games) ORDER BY region`, game)
+	rows, err := Pool.Query(ctx, fmt.Sprintf(
+		`SELECT DISTINCT region FROM location_encounters WHERE %s ORDER BY region`,
+		ArrayContains("games", "$1"),
+	), game)
 	if err != nil {
 		return nil, err
 	}
@@ -870,11 +942,11 @@ func GetRoutesByRegion(ctx context.Context, region string) ([]string, error) {
 }
 
 func GetRoutesByRegionAndGame(ctx context.Context, region, game string) ([]string, error) {
-	rows, err := Pool.Query(ctx, `
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
 		SELECT DISTINCT route_name FROM location_encounters
-		WHERE LOWER(region) = LOWER($1) AND $2 = ANY(games)
+		WHERE LOWER(region) = LOWER($1) AND %s
 		ORDER BY route_name
-	`, region, game)
+	`, ArrayContains("games", "$2")), region, game)
 	if err != nil {
 		return nil, err
 	}
@@ -891,12 +963,12 @@ func GetRoutesByRegionAndGame(ctx context.Context, region, game string) ([]strin
 }
 
 func GetLocationEncountersByGame(ctx context.Context, region, routeName, game string) ([]models.LocationEncounter, error) {
-	rows, err := Pool.Query(ctx, `
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
 		SELECT region, route_name, pokemon_name, games, encounter_method, rarity, level_range, time_of_day
 		FROM location_encounters
-		WHERE LOWER(region) = LOWER($1) AND LOWER(route_name) = LOWER($2) AND $3 = ANY(games)
+		WHERE LOWER(region) = LOWER($1) AND LOWER(route_name) = LOWER($2) AND %s
 		ORDER BY pokemon_name
-	`, region, routeName, game)
+	`, ArrayContains("games", "$3")), region, routeName, game)
 	if err != nil {
 		return nil, err
 	}
@@ -913,7 +985,7 @@ func GetLocationEncountersByGame(ctx context.Context, region, routeName, game st
 }
 
 func GetAllEncounterGames(ctx context.Context) ([]string, error) {
-	rows, err := Pool.Query(ctx, `SELECT DISTINCT unnest(games) AS game FROM location_encounters ORDER BY game`)
+	rows, err := Pool.Query(ctx, ArrayDistinct("location_encounters", "games"))
 	if err != nil {
 		return nil, err
 	}
@@ -1192,12 +1264,11 @@ func GetPokemonGameLocations(ctx context.Context, pokemonName string) ([]models.
 // --- Raid queries ---
 
 func GetAllRaidEvents(ctx context.Context) ([]models.RaidEvent, error) {
-	rows, err := Pool.Query(ctx, `
-		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url,
-		       to_char(scraped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
+		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url, %s
 		FROM raid_events
 		ORDER BY is_active DESC, scraped_at DESC
-	`)
+	`, UTCTimestamp("scraped_at")))
 	if err != nil {
 		return nil, err
 	}
@@ -1214,13 +1285,12 @@ func GetAllRaidEvents(ctx context.Context) ([]models.RaidEvent, error) {
 }
 
 func GetActiveRaidEvents(ctx context.Context) ([]models.RaidEvent, error) {
-	rows, err := Pool.Query(ctx, `
-		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url,
-		       to_char(scraped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
+		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url, %s
 		FROM raid_events
 		WHERE is_active = TRUE
 		ORDER BY star_rating DESC, pokemon_name
-	`)
+	`, UTCTimestamp("scraped_at")))
 	if err != nil {
 		return nil, err
 	}
@@ -1237,13 +1307,12 @@ func GetActiveRaidEvents(ctx context.Context) ([]models.RaidEvent, error) {
 }
 
 func GetRaidEventsByPokemon(ctx context.Context, pokemonName string) ([]models.RaidEvent, error) {
-	rows, err := Pool.Query(ctx, `
-		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url,
-		       to_char(scraped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
+		SELECT id, pokemon_name, tera_type, star_rating, event_start, event_end, is_active, source_url, %s
 		FROM raid_events
 		WHERE LOWER(pokemon_name) = LOWER($1)
 		ORDER BY scraped_at DESC
-	`, pokemonName)
+	`, UTCTimestamp("scraped_at")), pokemonName)
 	if err != nil {
 		return nil, err
 	}
@@ -1296,11 +1365,11 @@ func GetRaidCounters(ctx context.Context, pokemonName string, teraType string) (
 
 // GetPokemonByType returns all Pokemon names that have the given type (case-insensitive).
 func GetPokemonByType(ctx context.Context, typeName string) ([]string, error) {
-	rows, err := Pool.Query(ctx, `
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
 		SELECT name FROM pokemon
-		WHERE EXISTS (SELECT 1 FROM UNNEST(types) t WHERE LOWER(t) = LOWER($1))
+		WHERE %s
 		ORDER BY name
-	`, typeName)
+	`, ArrayContainsFold("types", "$1")), typeName)
 	if err != nil {
 		return nil, err
 	}
@@ -1511,11 +1580,7 @@ func GetPokemonByHabitat(ctx context.Context, habitat string) ([]string, error) 
 
 // GetAllEggGroups returns distinct egg groups from pokemon.egg_groups.
 func GetAllEggGroups(ctx context.Context) ([]string, error) {
-	rows, err := Pool.Query(ctx, `
-		SELECT DISTINCT g FROM pokemon, UNNEST(egg_groups) g
-		WHERE g IS NOT NULL AND g <> ''
-		ORDER BY g
-	`)
+	rows, err := Pool.Query(ctx, ArrayDistinct("pokemon", "egg_groups"))
 	if err != nil {
 		return nil, err
 	}
@@ -1534,11 +1599,11 @@ func GetAllEggGroups(ctx context.Context) ([]string, error) {
 // GetPokemonByEggGroup returns Pokemon whose egg_groups contains the given
 // group (case-insensitive).
 func GetPokemonByEggGroup(ctx context.Context, group string) ([]string, error) {
-	rows, err := Pool.Query(ctx, `
+	rows, err := Pool.Query(ctx, fmt.Sprintf(`
 		SELECT name FROM pokemon
-		WHERE EXISTS (SELECT 1 FROM UNNEST(egg_groups) g WHERE LOWER(g) = LOWER($1))
+		WHERE %s
 		ORDER BY name
-	`, group)
+	`, ArrayContainsFold("egg_groups", "$1")), group)
 	if err != nil {
 		return nil, err
 	}
@@ -1910,31 +1975,27 @@ func GetEVTargetsByStat(ctx context.Context, stat string, game string) ([]EVTarg
 		return nil, fmt.Errorf("unknown stat: %s", stat)
 	}
 
-	var rows interface {
-		Next() bool
-		Scan(...any) error
-		Close()
-	}
+	var rows Rows
 	var err error
 
 	// Order is applied in Go after fetching: SQL's split_part-based sort
 	// only sees the first comma-separated yield, so a Pokemon with
 	// "1 HP, 2 Speed" filtered by stat=Speed would sort by 1 instead of 2.
 	if game != "" {
-		rows, err = Pool.Query(ctx, `
+		rows, err = Pool.Query(ctx, fmt.Sprintf(`
 			SELECT p.name, p.ev_yield, gl.game, gl.location, gl.method
 			FROM pokemon p
 			JOIN pokemon_game_locations gl ON LOWER(gl.pokemon_name) = LOWER(p.name)
-			WHERE p.ev_yield ILIKE $1
+			WHERE %s
 			  AND gl.game = $2
-		`, "%"+keyword+"%", game)
+		`, LikeFold("p.ev_yield", "$1")), "%"+keyword+"%", game)
 	} else {
-		rows, err = Pool.Query(ctx, `
+		rows, err = Pool.Query(ctx, fmt.Sprintf(`
 			SELECT p.name, p.ev_yield, gl.game, gl.location, gl.method
 			FROM pokemon p
 			JOIN pokemon_game_locations gl ON LOWER(gl.pokemon_name) = LOWER(p.name)
-			WHERE p.ev_yield ILIKE $1
-		`, "%"+keyword+"%")
+			WHERE %s
+		`, LikeFold("p.ev_yield", "$1")), "%"+keyword+"%")
 	}
 	if err != nil {
 		return nil, err

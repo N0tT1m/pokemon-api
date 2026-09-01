@@ -14,11 +14,8 @@ import (
 
 // GET /api/v2/item?limit=N&offset=N
 func ListItems(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	if limit <= 0 {
-		limit = 2000
-	}
+	limit := queryLimit(r, 2000, 10000)
+	offset := queryInt(r, "offset", 0)
 
 	items, total, err := db.GetAllItems(r.Context(), limit, offset)
 	if err != nil {
@@ -311,12 +308,9 @@ func typeDamageRelationsJSON(r *db.TypeDamageRelations) map[string]any {
 
 // GET /api/v2/move?limit=N&offset=N&type=fire&category=physical&generation=3
 func ListMoves(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	if limit <= 0 {
-		limit = 1000
-	}
-	gen, _ := strconv.Atoi(r.URL.Query().Get("generation"))
+	limit := queryLimit(r, 1000, 10000)
+	offset := queryInt(r, "offset", 0)
+	gen := queryInt(r, "generation", 0)
 	filter := db.MoveFilter{
 		Type:       r.URL.Query().Get("type"),
 		Category:   r.URL.Query().Get("category"),
@@ -444,11 +438,8 @@ func GetMove(w http.ResponseWriter, r *http.Request) {
 
 // GET /api/v2/ability?limit=N&offset=N
 func ListAbilities(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	if limit <= 0 {
-		limit = 400
-	}
+	limit := queryLimit(r, 400, 10000)
+	offset := queryInt(r, "offset", 0)
 
 	abilities, total, err := db.GetAllAbilities(r.Context(), limit, offset)
 	if err != nil {
@@ -1272,7 +1263,7 @@ func GetPokemonContestStats(w http.ResponseWriter, r *http.Request) {
 		stats = []models.ContestStat{}
 	}
 	writeJSON(w, 200, map[string]any{
-		"pokemon_name": p.Name,
+		"pokemon_name":  p.Name,
 		"contest_stats": stats,
 	})
 }

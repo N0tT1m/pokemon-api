@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+# Any built database, whatever it is named — these are large derived artifacts
+# (60-120MB) rebuilt from upstream sources, never committed. See README.md.
+*.db
+*.db-wal
+*.db-shm
+csv_data/
+.venv/

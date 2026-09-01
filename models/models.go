@@ -4,17 +4,17 @@ type Pokemon struct {
 	Name           string   `json:"name"`
 	URL            *string  `json:"url"`
 	NationalNo     *string  `json:"national_no"`
-	Types          []string `json:"types"`
+	Types          StrArray `json:"types"`
 	Species        *string  `json:"species"`
 	Height         *string  `json:"height"`
 	Weight         *string  `json:"weight"`
-	Abilities      []string `json:"abilities"`
+	Abilities      StrArray `json:"abilities"`
 	EVYield        *string  `json:"ev_yield"`
 	CatchRate      *string  `json:"catch_rate"`
 	BaseFriendship *string  `json:"base_friendship"`
 	BaseExp        *string  `json:"base_exp"`
 	GrowthRate     *string  `json:"growth_rate"`
-	EggGroups      []string `json:"egg_groups"`
+	EggGroups      StrArray `json:"egg_groups"`
 	GenderRatio    *string  `json:"gender_ratio"`
 	EggCycles      *string  `json:"egg_cycles"`
 	HP             *int     `json:"hp"`
@@ -35,7 +35,7 @@ type Evolution struct {
 	Number      *string  `json:"number"`
 	Name        string   `json:"name"`
 	URL         *string  `json:"url"`
-	Types       []string `json:"types"`
+	Types       StrArray `json:"types"`
 	EvolvesVia  *string  `json:"evolves_via"`
 	EvolvesFrom *string  `json:"evolves_from"`
 	ChainOrder  int      `json:"chain_order"`
@@ -52,14 +52,14 @@ type Move struct {
 }
 
 type Location struct {
-	Games     []string `json:"games"`
-	Locations []string `json:"locations"`
+	Games     StrArray `json:"games"`
+	Locations StrArray `json:"locations"`
 }
 
 type RegionalDexEntry struct {
 	DexNumber   int      `json:"dex_number"`
 	PokemonName string   `json:"pokemon_name"`
-	Types       []string `json:"types"`
+	Types       StrArray `json:"types"`
 }
 
 type NationalDexEntry struct {
@@ -70,7 +70,7 @@ type NationalDexEntry struct {
 type PokemonListEntry struct {
 	Name       string   `json:"name"`
 	NationalNo *string  `json:"national_no"`
-	Types      []string `json:"types"`
+	Types      StrArray `json:"types"`
 }
 
 type ItemDetail struct {
@@ -83,28 +83,28 @@ type ItemDetail struct {
 }
 
 type MoveDetail struct {
-	Name                  string   `json:"name"`
-	Type                  *string  `json:"type"`
-	Category              *string  `json:"category"`
-	Power                 *int     `json:"power"`
-	Accuracy              *int     `json:"accuracy"`
-	PP                    *int     `json:"pp"`
-	Effect                *string  `json:"effect"`
-	EffectChance          *int     `json:"effect_chance"`
-	Priority              *int     `json:"priority"`
-	Target                *string  `json:"target"`
-	GenerationIntroduced  *int     `json:"generation_introduced"`
-	ZMoveEquivalent       *string  `json:"z_move_equivalent"`
-	MaxMoveEquivalent     *string  `json:"max_move_equivalent"`
-	ContestType           *string  `json:"contest_type"`
-	Flags                 []string `json:"flags"`
+	Name                 string   `json:"name"`
+	Type                 *string  `json:"type"`
+	Category             *string  `json:"category"`
+	Power                *int     `json:"power"`
+	Accuracy             *int     `json:"accuracy"`
+	PP                   *int     `json:"pp"`
+	Effect               *string  `json:"effect"`
+	EffectChance         *int     `json:"effect_chance"`
+	Priority             *int     `json:"priority"`
+	Target               *string  `json:"target"`
+	GenerationIntroduced *int     `json:"generation_introduced"`
+	ZMoveEquivalent      *string  `json:"z_move_equivalent"`
+	MaxMoveEquivalent    *string  `json:"max_move_equivalent"`
+	ContestType          *string  `json:"contest_type"`
+	Flags                StrArray `json:"flags"`
 }
 
 type PokemonForm struct {
 	PokemonName string   `json:"pokemon_name"`
 	FormName    string   `json:"form_name"`
-	Types       []string `json:"types"`
-	Abilities   []string `json:"abilities"`
+	Types       StrArray `json:"types"`
+	Abilities   StrArray `json:"abilities"`
 	Height      *string  `json:"height"`
 	Weight      *string  `json:"weight"`
 	HP          *int     `json:"hp"`
@@ -148,7 +148,7 @@ type LocationEncounter struct {
 	Region          string   `json:"region"`
 	RouteName       string   `json:"route_name"`
 	PokemonName     string   `json:"pokemon_name"`
-	Games           []string `json:"games"`
+	Games           StrArray `json:"games"`
 	EncounterMethod *string  `json:"encounter_method"`
 	Rarity          *string  `json:"rarity"`
 	LevelRange      *string  `json:"level_range"`
@@ -250,8 +250,8 @@ type PokemonClassification struct {
 type CompetitivePokemon struct {
 	Name       string   `json:"name"`
 	NationalNo *string  `json:"national_no"`
-	Types      []string `json:"types"`
-	Abilities  []string `json:"abilities"`
+	Types      StrArray `json:"types"`
+	Abilities  StrArray `json:"abilities"`
 	HP         *int     `json:"hp"`
 	Attack     *int     `json:"attack"`
 	Defense    *int     `json:"defense"`
@@ -262,12 +262,12 @@ type CompetitivePokemon struct {
 }
 
 type ZMove struct {
-	Name      string  `json:"name"`
-	Type      *string `json:"type"`
-	Power     *int    `json:"power"`
-	Effect    *string `json:"effect"`
-	BaseMove  *string `json:"base_move"`
-	Category  *string `json:"category"`
+	Name     string  `json:"name"`
+	Type     *string `json:"type"`
+	Power    *int    `json:"power"`
+	Effect   *string `json:"effect"`
+	BaseMove *string `json:"base_move"`
+	Category *string `json:"category"`
 }
 
 type InGameTrade struct {
@@ -330,7 +330,7 @@ type EventPokemon struct {
 	Year               *int     `json:"year"`
 	Level              *int     `json:"level"`
 	HeldItem           *string  `json:"held_item"`
-	Moves              []string `json:"moves"`
+	Moves              StrArray `json:"moves"`
 	OtName             *string  `json:"ot_name"`
 	DistributionMethod *string  `json:"distribution_method"`
 	Notes              *string  `json:"notes"`
@@ -378,12 +378,12 @@ type VersionExclusive struct {
 }
 
 type Trainer struct {
-	Name           string  `json:"name"`
-	Game           string  `json:"game"`
-	Role           *string `json:"role"`
-	SpecialtyType  *string `json:"specialty_type"`
-	Location       *string `json:"location"`
-	BattleVariant  string  `json:"battle_variant"`
+	Name          string  `json:"name"`
+	Game          string  `json:"game"`
+	Role          *string `json:"role"`
+	SpecialtyType *string `json:"specialty_type"`
+	Location      *string `json:"location"`
+	BattleVariant string  `json:"battle_variant"`
 }
 
 type TrainerPokemon struct {
@@ -394,6 +394,6 @@ type TrainerPokemon struct {
 	Level         *int     `json:"level"`
 	HeldItem      *string  `json:"held_item"`
 	Ability       *string  `json:"ability"`
-	Moves         []string `json:"moves"`
+	Moves         StrArray `json:"moves"`
 	TeamOrder     int      `json:"team_order"`
 }

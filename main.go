@@ -4,7 +4,7 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/N0tT1m/pokemon-api/db"
 	"github.com/N0tT1m/pokemon-api/handlers"
+	"github.com/N0tT1m/pokemon-api/internal/denden"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -23,15 +24,30 @@ var docsFS embed.FS
 func main() {
 	ctx := context.Background()
 
+	// Structured logging to stdout (den-den-mushi schema). When $DENDEN_HUB_HTTP
+	// is set, lines are also shipped to the hub over HTTP; otherwise stdout only.
+	denden.SetDefault("pokemon-api")
+
 	if err := db.Connect(ctx); err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		slog.Error("failed to connect to database", "err", err)
+		os.Exit(1)
 	}
 	defer db.Pool.Close()
 
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+	r.Use(requestLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(corsMiddleware)
+	// Bound per-request work: cancels r.Context() (and therefore any in-flight DB
+	// query using it) after 30s, well under the server's 60s WriteTimeout.
+	r.Use(middleware.Timeout(30 * time.Second))
+
+	// Liveness probe target for Container Apps / any orchestrator.
+	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Write can only fail on a dropped client connection; nothing to recover.
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 
 	// API documentation (Redoc reference + Swagger UI playground)
 	r.Get("/docs", serveEmbedded("docs/index.html", "text/html; charset=utf-8"))
@@ -150,8 +166,12 @@ func main() {
 		port = "158"
 	}
 
+	// TLS_CERT=off disables the HTTPS listener entirely, for environments that
+	// terminate TLS upstream — Azure Container Apps ingress, or any reverse
+	// proxy. The plain HTTP listener then carries all traffic.
 	certFile := os.Getenv("TLS_CERT")
 	keyFile := os.Getenv("TLS_KEY")
+	tlsEnabled := certFile != "off"
 	if certFile == "" {
 		certFile = "/app/certs/fullchain.pem"
 	}
@@ -162,6 +182,10 @@ func main() {
 	httpPort := os.Getenv("PORT_HTTP")
 	if httpPort == "" {
 		httpPort = "157"
+	}
+	if !tlsEnabled && httpPort == "off" {
+		slog.Error("TLS_CERT=off requires PORT_HTTP to name a port, otherwise nothing would listen")
+		os.Exit(1)
 	}
 
 	newServer := func(addr string) *http.Server {
@@ -175,57 +199,87 @@ func main() {
 		}
 	}
 
-	tlsSrv := newServer(":" + port)
 	var httpSrv *http.Server
 	if httpPort != "off" {
 		httpSrv = newServer(":" + httpPort)
 		go func() {
-			log.Printf("Starting HTTP server on :%s", httpPort)
+			slog.Info("starting HTTP server", "port", httpPort)
 			if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				log.Printf("HTTP server error: %v", err)
+				slog.Error("HTTP server error", "err", err)
 			}
 		}()
 	}
 
-	go func() {
-		log.Printf("Starting HTTPS server on :%s", port)
-		if err := tlsSrv.ListenAndServeTLS(certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("HTTPS server error: %v", err)
-		}
-	}()
+	var tlsSrv *http.Server
+	if tlsEnabled {
+		tlsSrv = newServer(":" + port)
+		go func() {
+			slog.Info("starting HTTPS server", "port", port)
+			if err := tlsSrv.ListenAndServeTLS(certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("HTTPS server error", "err", err)
+				os.Exit(1)
+			}
+		}()
+	}
 
 	// Graceful shutdown on SIGINT / SIGTERM
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
-	log.Println("Shutdown signal received, draining connections...")
+	slog.Info("shutdown signal received, draining connections")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := tlsSrv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTPS shutdown error: %v", err)
+	if tlsSrv != nil {
+		if err := tlsSrv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("HTTPS shutdown error", "err", err)
+		}
 	}
 	if httpSrv != nil {
 		if err := httpSrv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("HTTP shutdown error: %v", err)
+			slog.Error("HTTP shutdown error", "err", err)
 		}
 	}
-	log.Println("Shutdown complete")
+	slog.Info("shutdown complete")
+}
+
+// requestLogger emits one structured log line per request via the default
+// (den-den) slog logger, replacing chi's text-format middleware.Logger.
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		start := time.Now()
+		defer func() {
+			slog.Info("request",
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", ww.Status(),
+				"bytes", ww.BytesWritten(),
+				"duration_ms", time.Since(start).Milliseconds(),
+				"remote", r.RemoteAddr,
+			)
+		}()
+		next.ServeHTTP(ww, r)
+	})
 }
 
 func serveEmbedded(path, contentType string) http.HandlerFunc {
 	data, err := docsFS.ReadFile(path)
 	if err != nil {
-		log.Fatalf("embed: failed to read %s: %v", path, err)
+		slog.Error("embed: failed to read file", "path", path, "err", err)
+		os.Exit(1)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", contentType)
-		w.Write(data)
+		// Write can only fail on a dropped client connection; nothing to recover.
+		_, _ = w.Write(data)
 	}
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Wildcard is intentional: this is a public, read-only (GET/OPTIONS) API
+		// that sends no credentials or cookies, so any origin may read it.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")

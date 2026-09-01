@@ -10,9 +10,13 @@ certs/
 # Sub-projects have their own Dockerfiles; not part of the API image
 pokemondb_scraper/
 pokeapi_csv_loader/
+# The Azure ingest pipeline builds pokedex.db ahead of the image build; only
+# the resulting azure/pokedex.db belongs in the context.
+azure/pipeline/
 
 # Build artifacts
 pokedex-api
+pokedex-api-sqlite
 *.exe
 
 # Python

@@ -185,21 +185,18 @@ func GetPokedex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, _ := db.GetRegionalDex(r.Context(), game)
+	entries, err := db.GetRegionalDexWithNationalNo(r.Context(), game)
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
 	pokemonEntries := make([]map[string]any, len(entries))
 	for i, e := range entries {
-		// Look up national dex number for the sprite URL
-		numID := 0
-		p, err := db.GetPokemonByName(r.Context(), e.PokemonName)
-		if err == nil && p.NationalNo != nil {
-			numID, _ = strconv.Atoi(strings.TrimLeft(*p.NationalNo, "0"))
-		}
-
 		pokemonEntries[i] = map[string]any{
 			"entry_number": e.DexNumber,
 			"pokemon_species": map[string]any{
 				"name": strings.ToLower(e.PokemonName),
-				"url":  "/api/v2/pokemon-species/" + strconv.Itoa(numID) + "/",
+				"url":  "/api/v2/pokemon-species/" + strconv.Itoa(e.NationalNo) + "/",
 			},
 		}
 	}

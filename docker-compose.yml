@@ -7,17 +7,19 @@ services:
     image: postgres:17
     restart: unless-stopped
     environment:
-      POSTGRES_USER: pokedex
-      POSTGRES_PASSWORD: pokedex
-      POSTGRES_DB: pokedex
+      # Override in a local .env for anything beyond a throwaway dev DB.
+      POSTGRES_USER: ${POSTGRES_USER:-pokedex}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pokedex}
+      POSTGRES_DB: ${POSTGRES_DB:-pokedex}
     ports:
-      - "5432:5432"
+      # Bind to loopback only so the DB isn't reachable from off-host.
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
       - pokedex_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U pokedex"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pokedex}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -28,10 +30,16 @@ services:
     ports:
       - "158:158"
     environment:
-      DATABASE_URI: postgresql://pokedex:pokedex@db:5432/pokedex
+      DATABASE_URI: postgresql://${POSTGRES_USER:-pokedex}:${POSTGRES_PASSWORD:-pokedex}@db:5432/${POSTGRES_DB:-pokedex}
       PORT: "158"
       TLS_CERT: /app/certs/fullchain.pem
       TLS_KEY: /app/certs/privkey.pem
+      # den-den-mushi structured logging. Empty = stdout only (a host forwarder
+      # tails it). Set DENDEN_HUB_HTTP to also ship over HTTP to the hub.
+      DENDEN_HUB_HTTP: ${DENDEN_HUB_HTTP:-}
+      DENDEN_HUB_USER: ${DENDEN_HUB_USER:-}
+      DENDEN_HUB_PASSWORD: ${DENDEN_HUB_PASSWORD:-}
+      DENDEN_LEVEL: ${DENDEN_LEVEL:-info}
     volumes:
       - ./certs:/app/certs:ro
     networks:
@@ -44,7 +52,7 @@ services:
     build:
       context: ./pokemondb_scraper
     environment:
-      DATABASE_URI: postgresql://pokedex:pokedex@db:5432/pokedex
+      DATABASE_URI: postgresql://${POSTGRES_USER:-pokedex}:${POSTGRES_PASSWORD:-pokedex}@db:5432/${POSTGRES_DB:-pokedex}
     networks:
       - pokedex_net
     depends_on:
@@ -57,7 +65,7 @@ services:
     build:
       context: ./pokeapi_csv_loader
     environment:
-      DATABASE_URI: postgresql://pokedex:pokedex@db:5432/pokedex
+      DATABASE_URI: postgresql://${POSTGRES_USER:-pokedex}:${POSTGRES_PASSWORD:-pokedex}@db:5432/${POSTGRES_DB:-pokedex}
     networks:
       - pokedex_net
     depends_on:

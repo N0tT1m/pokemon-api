@@ -51,7 +51,11 @@ func GetRaidByPokemon(w http.ResponseWriter, r *http.Request) {
 	teraType := strings.TrimSpace(r.URL.Query().Get("tera_type"))
 
 	events, err := db.GetRaidEventsByPokemon(r.Context(), pokemon)
-	if err != nil || len(events) == 0 {
+	if err != nil {
+		writeServerError(w, r, err)
+		return
+	}
+	if len(events) == 0 {
 		writeError(w, 404, "No raid events found for "+pokemon)
 		return
 	}

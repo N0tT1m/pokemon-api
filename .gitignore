@@ -12,6 +12,11 @@ pokedex-api
 .idea/
 .vscode/
 
+# Local agent settings — contains machine-specific host/credential command
+# strings. Also covered by a global gitignore, but that does not travel to a
+# fresh clone or CI, so it is pinned here too.
+.claude/settings.local.json
+
 # Python (scraper + csv loader)
 __pycache__/
 *.pyc
@@ -20,3 +25,9 @@ venv/
 
 # CSV snapshot lives in image only
 pokeapi_csv_loader/csv_data/
+
+# Built SQLite database — a ~100MB build artifact, produced by
+# azure/pipeline/build_db.py and baked into the image at docker build time.
+azure/pokedex.db
+azure/pokedex.db-wal
+azure/pokedex.db-shm

@@ -2,7 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -16,7 +16,11 @@ import (
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		// Header + status are already flushed, so we can't change the response;
+		// log so a broken/aborted write surfaces instead of vanishing silently.
+		slog.Error("failed to encode JSON response", "err", err)
+	}
 }
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -27,7 +31,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 // 500 to the client. Use this for unexpected DB/internal failures — never
 // surface raw error strings since they leak schema details.
 func writeServerError(w http.ResponseWriter, r *http.Request, err error) {
-	log.Printf("error handling %s %s: %v", r.Method, r.URL.Path, err)
+	slog.Error("request handler error", "method", r.Method, "path", r.URL.Path, "err", err)
 	writeError(w, 500, "internal server error")
 }
 
@@ -42,13 +46,49 @@ func lookupPokemon(r *http.Request) (*models.Pokemon, error) {
 	return db.GetPokemonByName(r.Context(), identifier)
 }
 
+// writeLookupError maps a failed lookup to 404 when the row is genuinely
+// missing, or a logged 500 when the database itself failed — so a DB outage no
+// longer masquerades as "not found".
+func writeLookupError(w http.ResponseWriter, r *http.Request, err error, notFoundMsg string) {
+	if db.IsNotFound(err) {
+		writeError(w, 404, notFoundMsg)
+		return
+	}
+	writeServerError(w, r, err)
+}
+
+// queryInt reads a non-negative integer query param, returning def when it is
+// absent, malformed, or negative.
+func queryInt(r *http.Request, key string, def int) int {
+	raw := r.URL.Query().Get(key)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < 0 {
+		return def
+	}
+	return v
+}
+
+// queryLimit reads a "limit" query param, falling back to def when it is
+// absent/invalid/non-positive, and capping it at max so a single request can't
+// ask the database for an unbounded number of rows.
+func queryLimit(r *http.Request, def, max int) int {
+	limit := queryInt(r, "limit", def)
+	if limit <= 0 {
+		limit = def
+	}
+	if limit > max {
+		limit = max
+	}
+	return limit
+}
+
 // GET /api/v2/pokemon?limit=N&offset=N
 func ListPokemon(w http.ResponseWriter, r *http.Request) {
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	if limit <= 0 {
-		limit = 1025
-	}
+	limit := queryLimit(r, 1025, 10000)
+	offset := queryInt(r, "offset", 0)
 
 	entries, total, err := db.GetAllPokemon(r.Context(), limit, offset)
 	if err != nil {
@@ -83,7 +123,7 @@ func ListPokemon(w http.ResponseWriter, r *http.Request) {
 func GetPokemon(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)
 	if err != nil {
-		writeError(w, 404, "Pokemon not found")
+		writeLookupError(w, r, err, "Pokemon not found")
 		return
 	}
 
@@ -210,7 +250,7 @@ func ListPokemonCompetitive(w http.ResponseWriter, r *http.Request) {
 func GetPokemonSpecies(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)
 	if err != nil {
-		writeError(w, 404, "Pokemon species not found")
+		writeLookupError(w, r, err, "Pokemon species not found")
 		return
 	}
 
@@ -240,11 +280,11 @@ func GetPokemonSpecies(w http.ResponseWriter, r *http.Request) {
 		"growth_rate": map[string]any{
 			"name": strings.ToLower(strings.ReplaceAll(deref(p.GrowthRate), " ", "-")),
 		},
-		"gender_rate":   genderRate,
-		"hatch_counter": parseIntOrNil(deref(p.EggCycles)),
-		"egg_groups":    formatEggGroups(p.EggGroups),
+		"gender_rate":         genderRate,
+		"hatch_counter":       parseIntOrNil(deref(p.EggCycles)),
+		"egg_groups":          formatEggGroups(p.EggGroups),
 		"flavor_text_entries": buildFlavorTextEntries(r, p.Name),
-		"evolution_chain": buildEvolutionChainRef(evos, id),
+		"evolution_chain":     buildEvolutionChainRef(evos, id),
 	}
 
 	writeJSON(w, 200, resp)
@@ -263,7 +303,7 @@ func GetEvolutionChain(w http.ResponseWriter, r *http.Request) {
 	// Find the pokemon by national number to get its name
 	p, err := db.GetPokemonByNationalNo(r.Context(), id)
 	if err != nil {
-		writeError(w, 404, "Evolution chain not found")
+		writeLookupError(w, r, err, "Evolution chain not found")
 		return
 	}
 
@@ -305,8 +345,8 @@ func GetGeneration(w http.ResponseWriter, r *http.Request) {
 	}
 	gen := generationRanges[id-1]
 
-	// Fetch Pokemon in this generation's national dex range
-	entries, _, err := db.GetAllPokemon(r.Context(), 2000, 0)
+	// Fetch only the Pokemon in this generation's national dex range.
+	entries, err := db.GetPokemonByNationalNoRange(r.Context(), gen.Start, gen.End)
 	if err != nil {
 		writeServerError(w, r, err)
 		return
@@ -318,12 +358,10 @@ func GetGeneration(w http.ResponseWriter, r *http.Request) {
 		if e.NationalNo != nil {
 			numID, _ = strconv.Atoi(strings.TrimLeft(*e.NationalNo, "0"))
 		}
-		if numID >= gen.Start && numID <= gen.End {
-			pokemonSpecies = append(pokemonSpecies, map[string]any{
-				"name": strings.ToLower(e.Name),
-				"url":  "/api/v2/pokemon-species/" + strconv.Itoa(numID) + "/",
-			})
-		}
+		pokemonSpecies = append(pokemonSpecies, map[string]any{
+			"name": strings.ToLower(e.Name),
+			"url":  "/api/v2/pokemon-species/" + strconv.Itoa(numID) + "/",
+		})
 	}
 
 	writeJSON(w, 200, map[string]any{
@@ -340,7 +378,7 @@ func GetGeneration(w http.ResponseWriter, r *http.Request) {
 func GetPokemonEncounters(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)
 	if err != nil {
-		writeError(w, 404, "Pokemon not found")
+		writeLookupError(w, r, err, "Pokemon not found")
 		return
 	}
 
@@ -381,7 +419,7 @@ func ListGames(w http.ResponseWriter, r *http.Request) {
 func GetPokemonMoves(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)
 	if err != nil {
-		writeError(w, 404, "Pokemon not found")
+		writeLookupError(w, r, err, "Pokemon not found")
 		return
 	}
 
@@ -403,7 +441,7 @@ func GetPokemonMoves(w http.ResponseWriter, r *http.Request) {
 func GetPokemonTypeDefenses(w http.ResponseWriter, r *http.Request) {
 	p, err := lookupPokemon(r)
 	if err != nil {
-		writeError(w, 404, "Pokemon not found")
+		writeLookupError(w, r, err, "Pokemon not found")
 		return
 	}
 
@@ -485,7 +523,7 @@ func parseGenderRate(s string) int {
 		if strings.Contains(p, "♀") {
 			numStr := strings.TrimRight(strings.TrimSpace(strings.Replace(p, "♀", "", 1)), "%")
 			if val, err := strconv.ParseFloat(numStr, 64); err == nil {
-				return int(val / 12.5)
+				return int(val/12.5 + 0.5) // round to nearest eighth
 			}
 		}
 	}
@@ -594,10 +632,17 @@ func buildEvolutionTree(evos []models.Evolution) map[string]any {
 		}
 	}
 
-	// Recursively assemble the tree
+	// Recursively assemble the tree. A visited guard prevents cyclic scraped
+	// data (e.g. A evolves_from B while B evolves_from A) from recursing forever
+	// and overflowing the stack.
+	visited := make([]bool, len(nodes))
 	var build func(idx int) map[string]any
 	build = func(idx int) map[string]any {
 		n := nodes[idx]
+		if visited[idx] {
+			return n.data
+		}
+		visited[idx] = true
 		childMaps := make([]any, len(n.children))
 		for i, ci := range n.children {
 			childMaps[i] = build(ci)
