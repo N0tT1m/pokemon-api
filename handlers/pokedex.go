@@ -165,7 +165,7 @@ func GetPokedex(w http.ResponseWriter, r *http.Request) {
 			pokemonEntries[i] = map[string]any{
 				"entry_number": numID,
 				"pokemon_species": map[string]any{
-					"name": strings.ToLower(e.Name),
+					"name": speciesSlug(e.Name),
 					"url":  "/api/v2/pokemon-species/" + strconv.Itoa(numID) + "/",
 				},
 			}

@@ -121,7 +121,7 @@ func ListPokemon(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		results[i] = map[string]any{
-			"name": strings.ToLower(e.Name),
+			"name": speciesSlug(e.Name),
 			"url":  "/api/v2/pokemon/" + numID + "/",
 		}
 	}
@@ -208,7 +208,7 @@ func GetPokemon(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	pokeIdentifier := toAPIName(p.Name)
+	pokeIdentifier := speciesSlug(p.Name)
 	pastTypes, _ := db.GetPastTypes(r.Context(), pokeIdentifier)
 	if pastTypes == nil {
 		pastTypes = []models.PastTypeEntry{}
@@ -221,7 +221,7 @@ func GetPokemon(w http.ResponseWriter, r *http.Request) {
 	spriteID := strconv.Itoa(id)
 	resp := map[string]any{
 		"id":              id,
-		"name":            strings.ToLower(p.Name),
+		"name":            speciesSlug(p.Name),
 		"base_experience": parseIntOrNil(deref(p.BaseExp)),
 		"height":          parseHeightToDecimeters(deref(p.Height)),
 		"weight":          parseWeightToHectograms(deref(p.Weight)),
@@ -282,7 +282,7 @@ func GetPokemonSpecies(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]any{
 		"id":   id,
-		"name": strings.ToLower(p.Name),
+		"name": speciesSlug(p.Name),
 		"genera": []map[string]any{
 			{
 				"genus":    deref(p.Species),
@@ -373,7 +373,7 @@ func GetGeneration(w http.ResponseWriter, r *http.Request) {
 			numID, _ = strconv.Atoi(strings.TrimLeft(*e.NationalNo, "0"))
 		}
 		pokemonSpecies = append(pokemonSpecies, map[string]any{
-			"name": strings.ToLower(e.Name),
+			"name": speciesSlug(e.Name),
 			"url":  "/api/v2/pokemon-species/" + strconv.Itoa(numID) + "/",
 		})
 	}
@@ -440,7 +440,7 @@ func GetPokemonMoves(w http.ResponseWriter, r *http.Request) {
 	vg := strings.TrimSpace(r.URL.Query().Get("version_group"))
 	var moves []models.Move
 	if vg != "" {
-		moves, _ = db.MovesByVersionGroup(r.Context(), toAPIName(p.Name), vg)
+		moves, _ = db.MovesByVersionGroup(r.Context(), speciesSlug(p.Name), vg)
 	} else {
 		moves, _ = db.GetMoves(r.Context(), p.Name)
 	}
@@ -627,7 +627,7 @@ func buildEvolutionTree(evos []models.Evolution) map[string]any {
 			name: e.Name,
 			data: map[string]any{
 				"species": map[string]any{
-					"name": strings.ToLower(e.Name),
+					"name": speciesSlug(e.Name),
 					"url":  "/api/v2/pokemon-species/" + numID + "/",
 				},
 				"evolution_details": details,
@@ -717,6 +717,46 @@ func parseWeightToHectograms(s string) int {
 // toAPIName converts a display name to a kebab-case API name.
 func toAPIName(s string) string {
 	return strings.ToLower(strings.ReplaceAll(strings.TrimSpace(s), " ", "-"))
+}
+
+// speciesSlugOverrides holds the species whose PokeAPI identifier cannot be
+// derived from the scraped name by stripping punctuation. It is the inverse of
+// dbNameForSlug.
+var speciesSlugOverrides = map[string]string{
+	"Nidoran♀ (female)": "nidoran-f",
+	"Nidoran♂ (male)":   "nidoran-m",
+}
+
+// speciesPunctuation strips the characters that PokeAPI slugs drop and folds
+// the one accented name, then turns spaces into hyphens.
+var speciesPunctuation = strings.NewReplacer(
+	"'", "", ".", "", ":", "", ",", "",
+	"é", "e", "É", "e",
+	" ", "-",
+)
+
+// speciesSlug converts a stored Pokemon name to its PokeAPI identifier —
+// "Mr. Mime" to "mr-mime", "Farfetch'd" to "farfetchd", "Type: Null" to
+// "type-null", "Flabébé" to "flabebe".
+//
+// Use this for Pokemon rather than toAPIName, which leaves punctuation in
+// place. The distinction matters twice over: the slug is what callers see in a
+// response, and it is also the join key for the PokeAPI-derived tables
+// (pokemon_moves_vg, past types), which store canonical slugs. Passing
+// toAPIName's "mr.-mime" to those matched no rows at all, so the affected
+// species silently returned empty move lists.
+func speciesSlug(name string) string {
+	name = strings.TrimSpace(name)
+	if slug, ok := speciesSlugOverrides[name]; ok {
+		return slug
+	}
+	slug := strings.ToLower(speciesPunctuation.Replace(name))
+	// Stripping a period between words ("Mime Jr.") can leave a doubled
+	// separator once spaces become hyphens.
+	for strings.Contains(slug, "--") {
+		slug = strings.ReplaceAll(slug, "--", "-")
+	}
+	return strings.Trim(slug, "-")
 }
 
 // parseEvolvesVia converts evolves_via text into PokeAPI-compatible evolution detail map.

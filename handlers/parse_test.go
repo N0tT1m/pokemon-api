@@ -117,3 +117,50 @@ func TestToAPIName(t *testing.T) {
 		}
 	}
 }
+
+func TestSpeciesSlug(t *testing.T) {
+	cases := map[string]string{
+		// Punctuation PokeAPI drops.
+		"Farfetch'd": "farfetchd",
+		"Sirfetch'd": "sirfetchd",
+		"Mr. Mime":   "mr-mime",
+		"Mr. Rime":   "mr-rime",
+		"Mime Jr.":   "mime-jr",
+		"Type: Null": "type-null",
+		"Flabébé":    "flabebe",
+
+		// Not derivable from the stored name; covered by the override map.
+		"Nidoran♀ (female)": "nidoran-f",
+		"Nidoran♂ (male)":   "nidoran-m",
+
+		// Ordinary names must be untouched beyond lowercasing and hyphenation.
+		"Pikachu":    "pikachu",
+		"Totodile":   "totodile",
+		"Ho Oh":      "ho-oh",
+		"Porygon-Z":  "porygon-z",
+		"  Squirtle": "squirtle",
+	}
+	for in, want := range cases {
+		if got := speciesSlug(in); got != want {
+			t.Errorf("speciesSlug(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestSpeciesSlugRoundTrip guards the two directions against drifting apart:
+// every slug the override map produces must map back to the same stored name.
+func TestSpeciesSlugRoundTrip(t *testing.T) {
+	for dbName, slug := range speciesSlugOverrides {
+		back, ok := dbNameForSlug[slug]
+		if !ok {
+			t.Errorf("slug %q has no dbNameForSlug entry", slug)
+			continue
+		}
+		if back != dbName {
+			t.Errorf("dbNameForSlug[%q] = %q, want %q", slug, back, dbName)
+		}
+	}
+	if len(dbNameForSlug) != len(speciesSlugOverrides) {
+		t.Errorf("maps differ in size: %d vs %d", len(dbNameForSlug), len(speciesSlugOverrides))
+	}
+}
