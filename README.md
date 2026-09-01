@@ -11,6 +11,28 @@ This is the backend for the [pokedex][pokedex] Flutter app.
 [pokeapi]: https://pokeapi.co/
 [pokedex]: https://github.com/N0tT1m/pokedex
 
+## Screenshots
+
+The API serves its own documentation from the binary — no separate docs site to
+deploy, and the spec can never drift from the build it ships in.
+
+### Reference — `/docs`
+
+A [Redoc][redoc] reference generated from the OpenAPI spec, with all 75
+endpoints grouped by area and response samples alongside each one.
+
+![The Pokemon API reference at /docs](docs/images/reference.png)
+
+### Playground — `/playground`
+
+A [Swagger UI][swagger] playground for firing real requests at the API and
+reading the responses in place.
+
+![The Pokemon API playground at /playground](docs/images/playground.png)
+
+[redoc]: https://github.com/Redocly/redoc
+[swagger]: https://swagger.io/tools/swagger-ui/
+
 ## Highlights
 
 - **75 endpoints** under `/api/v2`, most of them drop-in compatible with PokeAPI's response schema
