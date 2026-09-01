@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, vet and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      # Both backends are selected at compile time by a build tag, so each one
+      # needs its own build and vet — a change can break the sqlite build while
+      # leaving the default Postgres build green.
+      - name: Build (postgres)
+        run: go build ./...
+
+      - name: Build (sqlite)
+        run: go build -tags sqlite ./...
+
+      - name: Vet (postgres)
+        run: go vet ./...
+
+      - name: Vet (sqlite)
+        run: go vet -tags sqlite ./...
+
+      - name: Test
+        run: go test -race ./...

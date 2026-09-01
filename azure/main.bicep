@@ -44,7 +44,7 @@ false, create the two records from the outputs, then deploy again with true.
 param bindCustomDomain bool = false
 
 @description('''
-den-den-mushi hub HTTP ingest URL, e.g. https://logs.duocore.dev. The app runs
+den-den-mushi hub HTTP ingest URL, e.g. https://logs.example.dev. The app runs
 on Container Apps where no fleet forwarder can see it, so it ships logs to the
 hub over HTTP. Empty (default) disables shipping — the app still logs to stdout,
 visible via `az containerapp logs show`.

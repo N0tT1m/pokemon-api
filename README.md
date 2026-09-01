@@ -1,5 +1,8 @@
 # Pokemon API
 
+[![CI](https://github.com/N0tT1m/pokemon-api/actions/workflows/ci.yml/badge.svg)](https://github.com/N0tT1m/pokemon-api/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A read-only, PokeAPI-compatible HTTP API for Pokemon data, written in Go. It
 serves the usual species/moves/abilities/items data on [PokeAPI][pokeapi]-shaped
 routes, and adds game-specific data that PokeAPI does not carry — raid
