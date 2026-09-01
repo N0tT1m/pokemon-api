@@ -51,6 +51,10 @@ def parse_int(value):
         return None
 
 
+# Values pokemondb uses for "no data" in a vitals row.
+BLANK_VITALS = {"", "-", "\u2014", "\u2013", "N/A"}
+
+
 class PokemonDbAllPokemon(scrapy.Spider):
     name = "pokemondb_pokemon"
     allowed_domains = ["pokemondb.net"]
@@ -157,8 +161,17 @@ class PokemonDbAllPokemon(scrapy.Spider):
                 # vitals.get('Base Friendship') lookup below.
                 key = ' '.join(' '.join(row.xpath('./th//text()').getall()).split())
                 value = ' '.join(' '.join(row.xpath('./td//text()').getall()).split())
-                if key:
-                    vitals[key] = value
+                if not key:
+                    continue
+                # A page carries one vitals table per form, and a later form can
+                # leave a row blank -- pokemondb writes an em dash for Gender on
+                # several alternate forms. A plain assignment lets that placeholder
+                # overwrite the base form's real value, which made 23 species
+                # (Dragonite, Skarmory, Froslass, Pyroar, ...) report as
+                # genderless. Never let a blank overwrite something real.
+                if value in BLANK_VITALS and key in vitals:
+                    continue
+                vitals[key] = value
 
         # --- Base stats table ---
         # The table is inside a div.resp-scroll wrapper, not a direct sibling of the h2
