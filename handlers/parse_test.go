@@ -7,11 +7,30 @@ func TestParseGenderRate(t *testing.T) {
 		in   string
 		want int
 	}{
+		// Symbol form, as used by earlier scrapes.
 		{"87.5% ♂, 12.5% ♀", 1},
 		{"75% ♂, 25% ♀", 2},
 		{"50% ♂, 50% ♀", 4},
 		{"12.5% ♂, 87.5% ♀", 7},
 		{"0% ♂, 100% ♀", 8},
+
+		// Worded form, exactly as pokemondb renders it and as it is stored in
+		// the database — including the doubled space the scraper's text-node
+		// join produces. These are every distinct ratio present across the
+		// 1025 rows.
+		{"87.5% male ,  12.5% female", 1},
+		{"75% male ,  25% female", 2},
+		{"50% male ,  50% female", 4},
+		{"25% male ,  75% female", 6},
+		{"12.5% male ,  87.5% female", 7},
+		{"0% male ,  100% female", 8},
+		{"100% male ,  0% female", 0},
+		{"87.5% male, 12.5% female", 1}, // normalized spacing
+
+		// Genderless species and missing data.
+		{"Genderless", -1},
+		{"—", -1},
+		{"", -1},
 		{"no female marker", -1},
 	}
 	for _, c := range cases {

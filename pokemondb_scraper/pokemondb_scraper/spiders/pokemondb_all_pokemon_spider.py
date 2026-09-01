@@ -149,8 +149,14 @@ class PokemonDbAllPokemon(scrapy.Spider):
             header = section.xpath('./text()').get('').strip()
             table = section.xpath('./following-sibling::table[has-class("vitals-table")][1]')
             for row in table.xpath('.//tbody/tr'):
-                key = ' '.join(row.xpath('./th//text()').getall()).strip()
-                value = ' '.join(row.xpath('./td//text()').getall()).strip()
+                # Collapse whitespace rather than plain-joining the text nodes.
+                # A header split across an element -- pokemondb writes
+                # "<th>Base <a ...>Friendship</a></th>" -- yields ['Base ',
+                # 'Friendship'], which a naive ' '.join turns into the
+                # double-spaced 'Base  Friendship', silently missing every
+                # vitals.get('Base Friendship') lookup below.
+                key = ' '.join(' '.join(row.xpath('./th//text()').getall()).split())
+                value = ' '.join(' '.join(row.xpath('./td//text()').getall()).split())
                 if key:
                     vitals[key] = value
 

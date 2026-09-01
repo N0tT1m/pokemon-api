@@ -514,15 +514,26 @@ func parseEVYield(s string) map[string]int {
 	return m
 }
 
+// genderPercentRe pulls the leading percentage out of one half of a gender
+// ratio, e.g. "12.5% female" -> "12.5".
+var genderPercentRe = regexp.MustCompile(`([0-9]+(?:\.[0-9]+)?)\s*%`)
+
+// parseGenderRate converts a scraped gender ratio to PokeAPI's gender_rate,
+// which is the female share in eighths (0 = all male, 8 = all female, -1 =
+// genderless).
+//
+// pokemondb writes the row as "87.5% male, 12.5% female"; earlier scrapes used
+// the "87.5% ♂, 12.5% ♀" symbols. Both are accepted, keyed off the female half
+// — note "female" contains "male", so the female test must come first.
+// "Genderless" and "—" match neither and fall through to -1.
 func parseGenderRate(s string) int {
-	// Format: "87.5% ♂, 12.5% ♀" -> PokeAPI gender_rate (female eighths)
-	// gender_rate = female% / 12.5
-	parts := strings.Split(s, ",")
-	for _, p := range parts {
-		p = strings.TrimSpace(p)
-		if strings.Contains(p, "♀") {
-			numStr := strings.TrimRight(strings.TrimSpace(strings.Replace(p, "♀", "", 1)), "%")
-			if val, err := strconv.ParseFloat(numStr, 64); err == nil {
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if !strings.Contains(part, "♀") && !strings.Contains(strings.ToLower(part), "female") {
+			continue
+		}
+		if m := genderPercentRe.FindStringSubmatch(part); m != nil {
+			if val, err := strconv.ParseFloat(m[1], 64); err == nil {
 				return int(val/12.5 + 0.5) // round to nearest eighth
 			}
 		}
